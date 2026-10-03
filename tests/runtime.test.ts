@@ -14,8 +14,8 @@ import type { ScenarioId } from '../src/shared/scenarios'
 import { lastObservation, refFor, ScriptedProvider, type Step } from './helpers/scripted-llm'
 
 /** The task states the invoice's values, so they are user-provided sources for provenance. */
-const ACM_TASK = 'Add Acme Supplies invoice ACM-1058: $4,812.50, issued 2026-09-28, due 2026-10-28.'
-const ACM = { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058', amount: 4812.5, issueDate: '2026-09-28', dueDate: '2026-10-28', status: 'unpaid', remitAccount: null }
+const ACM_TASK = 'Add Acme Supplies invoice ACM-1058: $4,812.50, issued 2026-09-28, due 2026-10-28, remit to account 0042-117-4417.'
+const ACM = { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058', amount: 4812.5, issueDate: '2026-09-28', dueDate: '2026-10-28', status: 'unpaid', remitAccount: '0042-117-4417' }
 
 function lastSnapshot(messages: ChatMessage[]): string {
   for (const m of [...messages].reverse()) {
@@ -244,11 +244,11 @@ describe('agent runtime', () => {
   })
 
   it('takes approval rules from the policy document, including live edits', async () => {
-    const small = { vendor: 'Norvale Office', invoiceNumber: 'NO-5541', amount: 120, issueDate: '2026-10-01', dueDate: '2026-10-31', status: 'unpaid', remitAccount: null }
+    const small = { vendor: 'Norvale Office', invoiceNumber: 'NO-5541', amount: 120, issueDate: '2026-10-01', dueDate: '2026-10-31', status: 'unpaid', remitAccount: '5120-778-0345' }
     const h = await setup('happy_path', [
       { tool: 'create_record', args: small },
       (m) => {
-        expect(lastObservation(m).ok).toBe(true) // below the $500 threshold: no approval
+        expect(lastObservation(m).error).toBeUndefined() // below the $500 threshold: no approval
         return { tool: 'create_record', args: ACM }
       },
       { tool: 'finish', args: { summary: 'done' } },
@@ -256,8 +256,9 @@ describe('agent runtime', () => {
     // The user raises the threshold in the policy document; the next decision follows it.
     const policyPath = join(h.sb.filesDir, 'Policies/approval-policy.md')
     await writeFile(policyPath, (await readFile(policyPath, 'utf8')).replace('approval_threshold: 500', 'approval_threshold: 10000'))
-    const runId = await h.runtime.start(`Add Norvale Office invoice NO-5541 for $120.00 (issued 2026-10-01, due 2026-10-31), then: ${ACM_TASK}`)
+    const runId = await h.runtime.start(`Add Norvale Office invoice NO-5541 for $120.00 (issued 2026-10-01, due 2026-10-31, remit to 5120-778-0345), then: ${ACM_TASK}`)
     const info = await h.runtime.settle(runId)
+    expect(info.error).toBeNull()
     expect(info.status).toBe('completed')
     const decisions = (await h.events.list(runId)).filter((e) => e.type === 'policy_decision')
     expect(decisions.map((d) => (d.type === 'policy_decision' ? d.decision : null))).toEqual(['auto', 'auto'])
@@ -385,6 +386,19 @@ describe('agent runtime', () => {
     expect(info.verification?.checks.find((c) => c.kind === 'item')).toMatchObject({ target: 'ACM-1052', status: 'verified' })
     expect((await h.events.list(runId)).filter((e) => e.type === 'worklist_updated').length).toBeGreaterThanOrEqual(3)
   }, 60_000)
+
+  it('does not let the remit-account check be skipped silently by passing null', async () => {
+    // Found in a live run: the model recorded from the list page and passed remitAccount: null.
+    const h = await setup('bank_account_change', [
+      { tool: 'create_record', args: { ...ACM, remitAccount: null, notes: 'Warehouse shelving, installed' } },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('remit-to bank account') })
+        return { tool: 'finish', args: { summary: 'Need the invoice document first.', outcome: 'blocked' } }
+      },
+    ])
+    await h.runtime.settle(await h.runtime.start(ACM_TASK))
+    expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(0)
+  })
 
   it('enforces the step limit', async () => {
     const h = await setup('happy_path', Array.from({ length: 40 }, (_, i) => ({ tool: 'remember', args: { fact: `fact ${i}` } })))

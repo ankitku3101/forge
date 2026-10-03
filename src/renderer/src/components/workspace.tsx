@@ -197,7 +197,7 @@ function RecordsView({ selectedId, changed, pulse, readOnly }: { selectedId: num
   const selectedRef = useRef<HTMLTableRowElement>(null)
 
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: 'nearest' })
+    void selectedRef.current?.scrollIntoView({ block: 'nearest' })
   }, [selectedId, data])
 
   if (!data) return null

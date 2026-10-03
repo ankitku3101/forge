@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { ActivityPanel } from '@/components/activity-panel'
 import { ChatPanel } from '@/components/chat-panel'
+import { ErrorBoundary } from '@/components/error-boundary'
 import { Header } from '@/components/header'
 import { SandboxPanel } from '@/components/sandbox-panel'
 import { Workspace } from '@/components/workspace'
@@ -26,6 +27,7 @@ export function App() {
       const [state, runs] = await Promise.all([api.invoke('app:state'), api.invoke('run:list')])
       setApp(state)
       setRunId(state.activeRunId ?? state.interruptedRunId ?? runs[0]?.id ?? null)
+      if (state.activeRunId) setFollowing(true)
     })()
   }, [])
 
@@ -68,10 +70,14 @@ export function App() {
         )}
         <div className="grid min-h-0 flex-1 grid-cols-[272px_minmax(0,1fr)_360px] grid-rows-[minmax(0,1fr)_minmax(180px,34%)]">
           <div className="row-span-2 flex min-h-0 flex-col">
-            <SandboxPanel view={view} onOpen={open} readOnly={Boolean(app.activeRunId)} portalUrl={app.portalUrl} />
+            <ErrorBoundary label="Sandbox">
+              <SandboxPanel view={view} onOpen={open} readOnly={Boolean(app.activeRunId)} portalUrl={app.portalUrl} />
+            </ErrorBoundary>
           </div>
           <div className="flex min-h-0 flex-col">
-            <Workspace view={view} pulse={pulse} following={active && following} readOnly={Boolean(app.activeRunId)} hidePortal={overlay} />
+            <ErrorBoundary label="Workspace">
+              <Workspace view={view} pulse={pulse} following={active && following} readOnly={Boolean(app.activeRunId)} hidePortal={overlay} />
+            </ErrorBoundary>
             {active && !following && (
               <button className="border-t bg-accent py-1 text-[12px] text-accent-foreground hover:underline" onClick={() => setFollowing(true)}>
                 Follow the worker again
@@ -79,8 +85,11 @@ export function App() {
             )}
           </div>
           <div className="row-span-2 flex min-h-0 flex-col">
-            <ActivityPanel run={run.info} items={run.activity} worklist={run.worklist} />
+            <ErrorBoundary label="Activity">
+              <ActivityPanel run={run.info} items={run.activity} worklist={run.worklist} />
+            </ErrorBoundary>
           </div>
+          <ErrorBoundary label="Chat">
           <ChatPanel
             app={app}
             run={run.info}
@@ -92,6 +101,7 @@ export function App() {
             }}
             onShowPortal={() => open({ kind: 'portal' })}
           />
+          </ErrorBoundary>
         </div>
       </div>
     </TooltipProvider>

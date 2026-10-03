@@ -102,8 +102,9 @@ function classify(err: unknown): LLMError {
     }
     if (status === 401 || status === 403) return new LLMError('auth', err.message)
     if (status >= 500) return new LLMError('server', err.message)
-    // Groq reports unparseable tool calls as 400 "tool_use_failed".
-    if (status === 400 && /tool_use_failed|failed to call a function|tool call validation/i.test(err.message)) {
+    // Groq reports unparseable tool calls as 400 "tool_use_failed", and a text-only reply under
+    // tool_choice "required" as "model did not call a tool". Both are malformed decisions, not bad requests.
+    if (status === 400 && /tool_use_failed|failed to call a function|tool call validation|did not call a tool|tool choice is required/i.test(err.message)) {
       return new LLMError('malformed', err.message)
     }
     return new LLMError('bad_request', err.message)

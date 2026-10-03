@@ -77,6 +77,7 @@ export type RunEventPayload =
   | { type: 'step_started'; step: number; model: string; provider: string }
   | { type: 'model_note'; text: string }
   | { type: 'llm_fallback'; from: string; to: string; reason: string }
+  | { type: 'llm_waiting'; reason: string; ms: number; attempt: number }
   | { type: 'tool_called'; step: number; toolCallId: string; tool: string; input: unknown; risk: Risk }
   | { type: 'tool_retry'; toolCallId: string; tool: string; attempt: number; code: ToolErrorCode; message: string }
   | { type: 'tool_succeeded'; toolCallId: string; tool: string; output: unknown; durationMs: number }

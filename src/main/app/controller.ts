@@ -12,7 +12,7 @@ import { openDatabase, type Database } from '../db/client'
 import { sandboxMeta, vendors } from '../db/schema'
 import type { LLMRouter } from '../llm/router'
 import type { DataPaths } from '../paths'
-import { createPortal, listen, type Portal, type RunningServer } from '../portal/server'
+import { CAPTCHA_COOKIE, createPortal, listen, type Portal, type RunningServer } from '../portal/server'
 import { Faults } from '../sandbox/faults'
 import { buildSandbox, SANDBOX_SCHEMA_VERSION } from '../sandbox/seed'
 import { createRegistry } from '../tools/registry'
@@ -62,6 +62,7 @@ export class AppController {
     this.portal = createPortal({ getDb: () => this.database.db, getFaults: () => this.faults })
     this.server = await listen(this.portal.app, PREFERRED_PORTAL_PORT)
     this.portalView = new PortalView(this.win, this.server.url)
+    if (process.env.ARCUS_E2E === '1') this.exposeE2EHooks()
     const driver = new PlaywrightDriver(() => this.portalView.getPage())
     this.browser = driver
 
@@ -135,6 +136,19 @@ export class AppController {
     await this.portalView?.dispose()
     await this.server?.close()
     await this.database?.close()
+  }
+
+  /**
+   * Test-only (ARCUS_E2E=1): lets scripts/live-run.ts answer the captcha like a human reading it.
+   * Never enabled in normal runs; the answer still goes through the same chat form as a user's.
+   */
+  private exposeE2EHooks(): void {
+    ;(globalThis as Record<string, unknown>).__arcusE2E = {
+      captchaAnswer: async () => {
+        const [cookie] = await this.portalView.view.webContents.session.cookies.get({ name: CAPTCHA_COOKIE })
+        return cookie ? this.portal.captchaAnswer(cookie.value) : null
+      },
+    }
   }
 
   private async resetTo(scenario: ScenarioId): Promise<void> {

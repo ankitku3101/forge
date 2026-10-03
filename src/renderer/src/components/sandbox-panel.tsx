@@ -22,8 +22,8 @@ export function SandboxPanel({ view, onOpen, readOnly, portalUrl }: Props) {
       <div className="flex h-10 shrink-0 items-center justify-between border-b px-3">
         <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Arcus sandbox</span>
         {readOnly && (
-          <Badge variant="secondary" className="gap-1 font-normal">
-            <Lock className="size-3" /> Read-only during task
+          <Badge variant="secondary" className="gap-1 font-normal" title="The sandbox is read-only while the worker runs a task">
+            <Lock className="size-3" /> Read-only
           </Badge>
         )}
       </div>

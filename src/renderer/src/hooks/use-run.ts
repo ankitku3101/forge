@@ -67,6 +67,9 @@ export function deriveViews(events: RunEvent[]) {
       case 'model_note':
         activity.push({ kind: 'note', id, text: e.text, at: e.at })
         break
+      case 'llm_waiting':
+        activity.push({ kind: 'note', id, text: `Waiting ${Math.round(e.ms / 1000)}s: ${e.reason} (attempt ${e.attempt}).`, at: e.at })
+        break
       case 'llm_fallback':
         activity.push({ kind: 'fallback', id, from: e.from, to: e.to, reason: e.reason, at: e.at })
         break

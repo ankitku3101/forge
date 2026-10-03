@@ -30,11 +30,20 @@ function traceNewRecord(
  * Compares the invoice's remit-to account with the vendor's account on file and applies the policy
  * document's `remit_account_mismatch` rule. Returns a reason to force approval, or null.
  */
-async function remitAccountRisk(ctx: ToolContext, i: { vendor: string; remitAccount: string | null }): Promise<string | null> {
-  if (!i.remitAccount) return null
+async function remitAccountRisk(ctx: ToolContext, i: { vendor: string; remitAccount: string | null; notes: string }): Promise<string | null> {
+  const { policy, source } = ctx.policy
+  if (!i.remitAccount) {
+    // Leaving the account out must be a visible, explained choice, or the fraud check could be skipped silently.
+    if (policy.remit_account_mismatch !== 'allow' && !/\b(remit|bank|account)\b/i.test(i.notes)) {
+      throw new ToolFailure(
+        'VALIDATION',
+        `Policy (${source}) checks the remit-to bank account against the vendor record. Read the invoice document and pass its remit-to account; if it truly has none, say so in the notes.`,
+      )
+    }
+    return null
+  }
   const vendor = await resolveVendor(ctx.db, i.vendor)
   if (sameAccount(vendor.remitAccount, i.remitAccount)) return null
-  const { policy, source } = ctx.policy
   const warning = `The invoice asks for payment to account ${i.remitAccount}, but ${vendor.name}'s account on file is ${vendor.remitAccount}. A changed bank account is a common fraud pattern.`
   if (policy.remit_account_mismatch === 'block') {
     throw new ToolFailure('PERMISSION_DENIED', `${warning} Policy (${source}) blocks recording it. Do not record this invoice; tell the user so they can verify with the vendor through a known contact.`)
@@ -64,8 +73,11 @@ function checkMissingDueDate({ policy, source }: LoadedPolicy, notes: string): v
   if (policy.missing_due_date === 'block') {
     throw new ToolFailure('PERMISSION_DENIED', `Policy (${source}) does not allow saving an invoice without a due date. Ask the user how to proceed.`)
   }
-  if (policy.missing_due_date === 'note' && notes.trim().length < 5) {
-    throw new ToolFailure('VALIDATION', `Policy (${source}) requires a note explaining the missing due date.`)
+  if (policy.missing_due_date === 'note' && !/\bdue\b/i.test(notes)) {
+    throw new ToolFailure(
+      'VALIDATION',
+      `Policy (${source}) only allows a missing due date with a note explaining it (mention the due date). First check the invoice document itself; list pages often omit the due date.`,
+    )
   }
 }
 

@@ -210,6 +210,7 @@ export class AgentRuntime {
             run.usedFallback = true
             void this.deps.events.emit(run.id, { type: 'llm_fallback', from: n.from, to: n.to, reason: n.reason })
           },
+          (w) => void this.deps.events.emit(run.id, { type: 'llm_waiting', reason: w.reason, ms: w.ms, attempt: w.attempt }),
         )
       } catch (err) {
         if (signal.aborted || (err instanceof LLMError && err.kind === 'aborted')) return
@@ -422,12 +423,14 @@ export class AgentRuntime {
         return
       }
       run.messages.push({ role: 'tool', toolCallId: call.id, name: tool.name, content: JSON.stringify({ ok: true, data: { accepted: false, verification: result.status } }) })
+      await this.deps.events.emit(run.id, { type: 'tool_failed', toolCallId: call.id, tool: tool.name, code: 'VALIDATION', message: 'Not accepted: verification mismatch.', durationMs: 0 })
       run.summary = withFallbackNote(run, summary)
       await this.failRun(run, `Verification mismatch: ${problems.join(' | ')}`)
       return
     }
 
     run.messages.push({ role: 'tool', toolCallId: call.id, name: tool.name, content: JSON.stringify({ ok: true, data: { accepted: true, verification: result.status } }) })
+    await this.deps.events.emit(run.id, { type: 'tool_succeeded', toolCallId: call.id, tool: tool.name, output: { accepted: true, verification: result.status }, durationMs: 0 })
     if (result.status === 'verified') await this.deps.events.emit(run.id, { type: 'verification_passed', result })
     run.summary = withFallbackNote(run, summary)
     if (outcome === 'blocked') {

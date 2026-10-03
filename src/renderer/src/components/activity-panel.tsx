@@ -28,7 +28,10 @@ import { StatusBadge } from './status-badge'
 
 export function ActivityPanel({ run, items, worklist }: { run: RunInfo | null; items: ActivityItem[]; worklist: WorkItem[] }) {
   const bottom = useRef<HTMLDivElement>(null)
-  useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [items.length])
+  // Braces matter: scrollIntoView returns a Promise in current Chromium, which must not become the effect's cleanup.
+  useEffect(() => {
+    void bottom.current?.scrollIntoView({ block: 'end' })
+  }, [items.length])
 
   return (
     <aside className="flex min-h-0 flex-1 flex-col border-l bg-card">

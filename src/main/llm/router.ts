@@ -10,6 +10,12 @@ export interface RouterOptions {
   sleep?: (ms: number) => Promise<void>
 }
 
+export interface WaitNotice {
+  reason: string
+  ms: number
+  attempt: number
+}
+
 export interface FallbackNotice {
   from: string
   to: string
@@ -36,7 +42,7 @@ export class LLMRouter {
     this.primary = opts.primary
     this.fallback = opts.fallback ?? null
     this.breakerMs = opts.breakerMs ?? 5 * 60_000
-    this.rateLimitRetries = opts.rateLimitRetries ?? 2
+    this.rateLimitRetries = opts.rateLimitRetries ?? (opts.fallback ? 2 : 8)
     this.now = opts.now ?? Date.now
     this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
   }
@@ -53,6 +59,7 @@ export class LLMRouter {
     req: CompletionRequest,
     validate: (r: CompletionResult) => string | null,
     onFallback: (n: FallbackNotice) => void,
+    onWait: (n: WaitNotice) => void = () => undefined,
   ): Promise<CompletionResult> {
     if (this.fallback && this.now() < this.breakerUntil) {
       return this.callValidated(this.fallback, req, validate)
@@ -79,7 +86,10 @@ export class LLMRouter {
         if (err.kind === 'rate_limit') {
           rateLimited += 1
           if (rateLimited <= this.rateLimitRetries) {
-            await this.sleep(err.retryAfterMs ?? 1000 * 2 ** (rateLimited - 1))
+            // Token-per-minute windows refill gradually; a provider's tiny retry-after hint rarely suffices.
+            const ms = Math.max(err.retryAfterMs ?? 0, Math.min(20_000, 2000 * 2 ** (rateLimited - 1)))
+            onWait({ reason: 'rate limited by the model provider', ms, attempt: rateLimited })
+            await this.sleep(ms)
             continue
           }
           return this.switchOver('rate limited', err, req, validate, onFallback)

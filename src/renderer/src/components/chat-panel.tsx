@@ -22,7 +22,10 @@ interface Props {
 export function ChatPanel({ app, run, items, onStarted, onShowPortal }: Props) {
   const bottom = useRef<HTMLDivElement>(null)
   const active = run && (run.status === 'running' || run.status === 'awaiting_user')
-  useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [items.length, run?.pending])
+  // Braces matter: scrollIntoView returns a Promise in current Chromium, which must not become the effect's cleanup.
+  useEffect(() => {
+    void bottom.current?.scrollIntoView({ block: 'end' })
+  }, [items.length, run?.pending])
 
   const respond = async (response: UserResponse) => {
     if (run) await api.invoke('run:respond', { runId: run.id, response })
