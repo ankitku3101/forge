@@ -72,6 +72,7 @@ export type RunEventPayload =
   | { type: 'tool_succeeded'; toolCallId: string; tool: string; output: unknown; durationMs: number }
   | { type: 'tool_failed'; toolCallId: string; tool: string; code: ToolErrorCode; message: string; durationMs: number }
   | { type: 'policy_decision'; toolCallId: string; decision: 'auto' | 'approval' | 'deny'; reason: string; warning: string | null }
+  | { type: 'injection_detected'; toolCallId: string; tool: string; snippets: string[] }
   | { type: 'focus_changed'; focus: FocusTarget }
   | { type: 'approval_requested'; request: PendingRequest }
   | { type: 'input_requested'; request: PendingRequest }
@@ -133,6 +134,7 @@ export interface Vendor {
   id: number
   name: string
   email: string
+  remitAccount: string
 }
 
 export interface FinanceRecord {
@@ -145,6 +147,7 @@ export interface FinanceRecord {
   issueDate: string | null
   dueDate: string | null
   status: RecordStatus
+  remitAccount: string | null
   notes: string
   createdAt: string
   updatedAt: string

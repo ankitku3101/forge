@@ -33,6 +33,7 @@ export type ActivityItem =
     }
   | { kind: 'note'; id: string; text: string; at: string }
   | { kind: 'fallback'; id: string; from: string; to: string; reason: string; at: string }
+  | { kind: 'security'; id: string; tool: string; snippets: string[]; at: string }
   | { kind: 'verification'; id: string; result: VerificationResult; at: string }
   | { kind: 'end'; id: string; ok: boolean; text: string; at: string }
 
@@ -73,6 +74,9 @@ export function deriveViews(events: RunEvent[]) {
         activity.push(item)
         break
       }
+      case 'injection_detected':
+        activity.push({ kind: 'security', id, tool: e.tool, snippets: e.snippets, at: e.at })
+        break
       case 'policy_decision': {
         const s = steps.get(e.toolCallId)
         if (s) s.policy = { decision: e.decision, reason: e.reason, warning: e.warning }

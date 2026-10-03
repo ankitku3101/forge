@@ -16,7 +16,10 @@ export interface SeedTarget {
   filesDir: string
 }
 
-export const SANDBOX_DIRS = ['Invoices', 'Policies', 'Notes', 'Downloads'] as const
+/** Bump when sandbox tables change shape; the app reseeds a sandbox built by an older version. */
+export const SANDBOX_SCHEMA_VERSION = 2
+
+export const SANDBOX_DIRS =['Invoices', 'Policies', 'Notes', 'Downloads'] as const
 
 /** Rebuilds every sandbox table and the Files folder for `scenario`. Deterministic. */
 export async function buildSandbox({ pg, db, filesDir }: SeedTarget, scenario: ScenarioId): Promise<void> {
@@ -25,7 +28,7 @@ export async function buildSandbox({ pg, db, filesDir }: SeedTarget, scenario: S
 
   const vendorIds = new Map<string, number>()
   for (const v of f.vendors) {
-    const [row] = await db.insert(s.vendors).values({ name: v.name, email: v.email }).returning({ id: s.vendors.id })
+    const [row] = await db.insert(s.vendors).values({ name: v.name, email: v.email, remitAccount: v.remitAccount }).returning({ id: s.vendors.id })
     vendorIds.set(v.name, row!.id)
   }
 
@@ -62,6 +65,7 @@ export async function buildSandbox({ pg, db, filesDir }: SeedTarget, scenario: S
       issueDate: inv.issueDate,
       dueDate: inv.dueDate,
       status: rec.status,
+      remitAccount: inv.remitAccount ?? f.vendors.find((v) => v.name === rec.vendor)!.remitAccount,
       notes: rec.notes,
       createdAt: `${inv.issueDate}T12:00:00Z`,
       updatedAt: `${inv.issueDate}T12:00:00Z`,
@@ -101,7 +105,10 @@ export async function buildSandbox({ pg, db, filesDir }: SeedTarget, scenario: S
     })
   }
 
-  await db.insert(s.sandboxMeta).values({ key: 'scenario', value: scenario })
+  await db.insert(s.sandboxMeta).values([
+    { key: 'scenario', value: scenario },
+    { key: 'schemaVersion', value: SANDBOX_SCHEMA_VERSION },
+  ])
 
   await rm(filesDir, { recursive: true, force: true })
   for (const d of SANDBOX_DIRS) await mkdir(join(filesDir, d), { recursive: true })

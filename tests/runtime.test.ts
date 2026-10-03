@@ -15,7 +15,7 @@ import { lastObservation, refFor, ScriptedProvider, type Step } from './helpers/
 
 /** The task states the invoice's values, so they are user-provided sources for provenance. */
 const ACM_TASK = 'Add Acme Supplies invoice ACM-1058: $4,812.50, issued 2026-09-28, due 2026-10-28.'
-const ACM = { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058', amount: 4812.5, issueDate: '2026-09-28', dueDate: '2026-10-28', status: 'unpaid' }
+const ACM = { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058', amount: 4812.5, issueDate: '2026-09-28', dueDate: '2026-10-28', status: 'unpaid', remitAccount: null }
 
 function lastSnapshot(messages: ChatMessage[]): string {
   for (const m of [...messages].reverse()) {
@@ -56,15 +56,20 @@ const portalSignIn: Step[] = [
   (m) => ({ tool: 'browser_click', args: { ref: refFor(lastSnapshot(m), /\[button "Sign in"/) } }),
 ]
 
-const downloadAndRecord: Step[] = [
+/** From the invoice list: open ACM-1058, download its PDF and read it. */
+const downloadAndRead: Step[] = [
   (m) => {
     const row = lastSnapshot(m).split('\n').find((l) => l.includes('ACM-1058'))!
     return { tool: 'browser_click', args: { ref: /ref=(e\d+)/.exec(row)![1] } }
   },
   (m) => ({ tool: 'browser_download', args: { ref: refFor(lastSnapshot(m), /\[link "Download PDF"/) } }),
   (m) => ({ tool: 'read_file', args: { path: lastObservation(m).data!.path } }),
+]
+
+const downloadAndRecord: Step[] = [
+  ...downloadAndRead,
   { tool: 'search_records', args: { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' } },
-  { tool: 'create_record', args: ACM },
+  { tool: 'create_record', args: { ...ACM, remitAccount: '0042-117-4417' } },
 ]
 
 async function answerSignIn(h: Awaited<ReturnType<typeof setup>>, runId: string) {
@@ -239,7 +244,7 @@ describe('agent runtime', () => {
   })
 
   it('takes approval rules from the policy document, including live edits', async () => {
-    const small = { vendor: 'Norvale Office', invoiceNumber: 'NO-5541', amount: 120, issueDate: '2026-10-01', dueDate: '2026-10-31', status: 'unpaid' }
+    const small = { vendor: 'Norvale Office', invoiceNumber: 'NO-5541', amount: 120, issueDate: '2026-10-01', dueDate: '2026-10-31', status: 'unpaid', remitAccount: null }
     const h = await setup('happy_path', [
       { tool: 'create_record', args: small },
       (m) => {
@@ -292,6 +297,51 @@ describe('agent runtime', () => {
     expect((await h.events.list(runId)).some((e) => e.type === 'approval_requested')).toBe(false)
     expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(0)
   })
+
+  it('flags a hidden prompt injection and refuses its injected values', async () => {
+    const h = await setup('prompt_injection', [
+      ...portalSignIn,
+      ...downloadAndRead,
+      (m) => {
+        const obs = lastObservation(m) as { security?: { flagged: string[] } }
+        expect(obs.security?.flagged[0]).toContain('Ignore previous instructions')
+        // Simulate a model that falls for it: the injected total must not pass provenance.
+        return { tool: 'create_record', args: { ...ACM, amount: 9480, remitAccount: '0042-117-4417' } }
+      },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('$9,480.00') })
+        return { tool: 'create_record', args: { ...ACM, remitAccount: '0042-117-4417' } }
+      },
+      { tool: 'finish', args: { summary: 'Added ACM-1058; ignored instructions hidden in the PDF.', claims: { records: [{ vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' }] } } },
+    ])
+    const runId = await h.runtime.start('Get the latest unpaid invoice from Acme Supplies on the vendor portal and add it to Finance.')
+    expect((await answerSignIn(h, runId)).pending?.kind).toBe('approval')
+    await h.runtime.respond(runId, { kind: 'approval', approved: true })
+    expect((await h.runtime.settle(runId)).status).toBe('completed')
+    expect((await h.events.list(runId)).filter((e) => e.type === 'injection_detected')).toHaveLength(1)
+    expect((await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' }))[0]?.amount).toBe(4812.5)
+    expect((await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1046' }))[0]?.status).toBe('overdue')
+  }, 60_000)
+
+  it('blocks an invoice whose remit-to account differs from the vendor record', async () => {
+    const h = await setup('bank_account_change', [
+      ...portalSignIn,
+      ...downloadAndRead,
+      (m) => {
+        expect(lastObservation(m).data!.text).toContain('9184-260-5537')
+        return { tool: 'create_record', args: { ...ACM, remitAccount: '9184-260-5537' } }
+      },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'PERMISSION_DENIED', message: expect.stringContaining('0042-117-4417') })
+        return { tool: 'finish', args: { summary: 'Did not record ACM-1058: the bank account changed. Please verify with Acme.', outcome: 'blocked' } }
+      },
+    ])
+    const runId = await h.runtime.start('Get the latest unpaid invoice from Acme Supplies on the vendor portal and add it to Finance.')
+    await answerSignIn(h, runId)
+    expect((await h.runtime.settle(runId)).status).toBe('failed')
+    expect((await h.events.list(runId)).some((e) => e.type === 'approval_requested')).toBe(false)
+    expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(0)
+  }, 60_000)
 
   it('enforces the step limit', async () => {
     const h = await setup('happy_path', Array.from({ length: 40 }, (_, i) => ({ tool: 'remember', args: { fact: `fact ${i}` } })))

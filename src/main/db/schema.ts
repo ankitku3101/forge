@@ -27,6 +27,8 @@ export const vendors = pgTable('vendors', {
   id: serial('id').primaryKey(),
   name: text('name').notNull().unique(),
   email: text('email').notNull(),
+  /** Bank account on file; invoices asking to pay elsewhere are a fraud signal. */
+  remitAccount: text('remit_account').notNull(),
 })
 
 export const financeRecords = pgTable(
@@ -42,6 +44,7 @@ export const financeRecords = pgTable(
     issueDate: date('issue_date', { mode: 'string' }),
     dueDate: date('due_date', { mode: 'string' }),
     status: text('status').$type<'unpaid' | 'paid' | 'overdue'>().notNull(),
+    remitAccount: text('remit_account'),
     notes: text('notes').notNull().default(''),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),

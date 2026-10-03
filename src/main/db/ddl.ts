@@ -6,7 +6,8 @@ export const SANDBOX_DDL = `
 CREATE TABLE IF NOT EXISTS vendors (
   id serial PRIMARY KEY,
   name text NOT NULL UNIQUE,
-  email text NOT NULL
+  email text NOT NULL,
+  remit_account text NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS finance_records (
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS finance_records (
   issue_date date,
   due_date date,
   status text NOT NULL,
+  remit_account text,
   notes text NOT NULL DEFAULT '',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),

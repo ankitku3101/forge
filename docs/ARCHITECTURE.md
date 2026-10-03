@@ -29,6 +29,14 @@ Every value the worker writes must trace to something it observed in this run: a
 - Unsourced values are rejected with `VALIDATION` before approval is requested. The approval card shows where each value came from.
 - Known limit: values the worker computes (e.g. summing line items) have no single source and are rejected; it must use the printed total or ask.
 
+## Untrusted content
+Documents, emails and pages are data, never instructions. Three layers, cheapest first:
+1. **Prompt:** only the user gives instructions; bank-detail changes are escalated.
+2. **Injection screen (code):** every successful tool result is scanned for text addressed to an AI or trying to override instructions. Flagged spans are attached to the observation as a `security` warning the model sees, emitted as `injection_detected` for the user, and **removed from provenance sources**, so a value that exists only inside injected text can't be written.
+3. **Hard controls:** approvals, provenance and the remit-account rule hold even if the model is fooled. The scanner is a heuristic; these are not.
+
+Fraud check: `create_record` requires the invoice's remit-to account (or null), provenance-checked against the invoice. If it differs from the vendor's account on file, the policy document's `remit_account_mismatch` rule applies: `block` (default) rejects before approval; `approve` forces approval with a warning.
+
 ## Verification (code, not the model)
 1. **Write check:** re-read the record or file, compare with what was submitted.
 2. **Provenance check:** lists each value's source (recorded at write time).

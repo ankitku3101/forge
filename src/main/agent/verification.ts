@@ -137,7 +137,14 @@ function outcomeCheck(
     : { kind: 'outcome', target, status: 'verified', detail: 'Matches the source invoice.' }
 }
 
-const FIELD_LABELS: Record<string, string> = { vendor: 'vendor', invoiceNumber: 'invoice no.', amount: 'amount', issueDate: 'issue date', dueDate: 'due date' }
+const FIELD_LABELS: Record<string, string> = {
+  vendor: 'vendor',
+  invoiceNumber: 'invoice no.',
+  amount: 'amount',
+  issueDate: 'issue date',
+  dueDate: 'due date',
+  remitAccount: 'remit-to account',
+}
 
 function provenanceCheck(target: string, provenance: Record<string, string> | undefined): VerificationCheck {
   if (!provenance) return { kind: 'provenance', target, status: 'unverifiable', detail: 'No provenance was recorded for this write.' }

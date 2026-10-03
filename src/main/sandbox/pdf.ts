@@ -68,8 +68,18 @@ export async function renderInvoicePdf(inv: PortalInvoiceFixture, f: Fixtures): 
   text(`Total due (${inv.currency})`, 340, 11, bold)
   text(formatMoney(invoiceTotalCents(inv), inv.currency), 500, 11, bold)
 
-  y -= 60
+  y -= 50
+  text('Remit to', 50, 9, bold, muted)
+  y -= 14
+  text(`${inv.bank ?? vendor.bank}, account ${inv.remitAccount ?? vendor.remitAccount}`, 50, 10)
+
+  y -= 30
   text(`Payment terms: ${inv.dueDate ? 'see due date above' : 'to be confirmed'}. Thank you for your business.`, 50, 9, font, muted)
+
+  if (inv.hiddenNote) {
+    // White 1pt text: invisible on the page, but present in the extracted text a model reads.
+    page.drawText(inv.hiddenNote, { x: 50, y: 40, size: 1, font, color: rgb(1, 1, 1) })
+  }
 
   return doc.save({ useObjectStreams: false })
 }

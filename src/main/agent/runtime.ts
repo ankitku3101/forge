@@ -13,6 +13,7 @@ import type { finishInput } from '../tools/worker'
 import type { EventLog } from './events'
 import { decide, loadPolicy } from './policy'
 import { collectSources } from './provenance'
+import { INJECTION_WARNING, scanObservation } from './injection'
 import { systemPrompt } from './prompts/system'
 import { toInfo, type RunState, type RunStore } from './store'
 import { verify } from './verification'
@@ -42,7 +43,25 @@ export interface RuntimeDeps {
   onRunUpdated?: (info: RunInfo) => void
 }
 
-type Observation = { ok: true; data: unknown } | { ok: false; error: { code: ToolErrorCode; message: string } }
+type Observation =
+  | { ok: true; data: unknown; security?: { warning: string; flagged: string[] } }
+  | { ok: false; error: { code: ToolErrorCode; message: string } }
+
+/** Serializes within budget by shortening long strings, so the stored JSON always stays parseable. */
+function serializeObservation(obs: Observation): string {
+  let content = JSON.stringify(obs)
+  for (let cap = 6000; content.length > MAX_OBSERVATION && cap >= 500; cap = Math.floor(cap / 2)) {
+    content = JSON.stringify(capStrings(obs, cap))
+  }
+  return content
+}
+
+function capStrings(v: unknown, cap: number): unknown {
+  if (typeof v === 'string') return v.length > cap ? `${v.slice(0, cap)}…[truncated]` : v
+  if (Array.isArray(v)) return v.map((x) => capStrings(x, cap))
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, capStrings(x, cap)]))
+  return v
+}
 
 const MAX_OBSERVATION = 12_000
 const KEEP_SNAPSHOTS = 2
@@ -258,14 +277,19 @@ export class AgentRuntime {
     // Prechecks run before the policy decision, so the user is never asked to approve a doomed action.
     const pre = await this.guard(async () => {
       await tool.precheck?.(input, ctx)
-      return tool.approvalAmount ? await tool.approvalAmount(input, ctx) : null
+      return {
+        amount: tool.approvalAmount ? await tool.approvalAmount(input, ctx) : null,
+        forced: tool.approvalReason ? await tool.approvalReason(input, ctx) : null,
+      }
     })
     if (!pre.ok) {
       await this.observe(run, call, tool, input, pre)
       return
     }
 
-    const { decision, reason } = decide(tool, pre.data, ctx.policy)
+    const base = decide(tool, pre.data.amount, ctx.policy)
+    const forced = base.decision !== 'deny' ? pre.data.forced : null
+    const { decision, reason } = forced ? { decision: 'approval' as const, reason: forced } : base
     if (decision !== 'auto' || tool.risk === 'financial' || ctx.policy.warning) {
       await this.deps.events.emit(run.id, { type: 'policy_decision', toolCallId: call.id, decision, reason, warning: ctx.policy.warning })
     }
@@ -320,9 +344,14 @@ export class AgentRuntime {
   }
 
   private async observe(run: RunState, call: ToolCall, tool: ToolDefinition, input: unknown, obs: Observation, durationMs = 0): Promise<void> {
-    let content = JSON.stringify(obs)
-    if (content.length > MAX_OBSERVATION) content = content.slice(0, MAX_OBSERVATION) + '…[truncated]'
-    run.messages.push({ role: 'tool', toolCallId: call.id, name: tool.name, content })
+    if (obs.ok) {
+      const flagged = scanObservation(obs.data)
+      if (flagged.length) {
+        obs = { ...obs, security: { warning: INJECTION_WARNING, flagged } }
+        await this.deps.events.emit(run.id, { type: 'injection_detected', toolCallId: call.id, tool: tool.name, snippets: flagged })
+      }
+    }
+    run.messages.push({ role: 'tool', toolCallId: call.id, name: tool.name, content: serializeObservation(obs) })
 
     if (obs.ok) {
       await this.deps.events.emit(run.id, { type: 'tool_succeeded', toolCallId: call.id, tool: tool.name, output: obs.data, durationMs })

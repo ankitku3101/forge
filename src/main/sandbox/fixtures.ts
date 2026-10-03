@@ -15,6 +15,20 @@ const portalInvoice = z.object({
   status,
   description: z.string(),
   lineItems: z.array(lineItem).min(1),
+  /** Override the vendor's bank details printed on the invoice (fraud scenarios). */
+  bank: z.string().optional(),
+  remitAccount: z.string().optional(),
+  /** Invisible text rendered into the PDF (prompt-injection scenarios). */
+  hiddenNote: z.string().optional(),
+})
+
+const mailFixture = z.object({
+  fromName: z.string(),
+  fromAddress: z.string(),
+  subject: z.string(),
+  receivedAt: z.string(),
+  body: z.string(),
+  attachments: z.array(z.object({ invoice: z.string() })).optional(),
 })
 
 const financeRecord = z.object({
@@ -26,20 +40,11 @@ const financeRecord = z.object({
 
 const fixturesSchema = z.object({
   company: z.object({ name: z.string(), address: z.string(), apEmail: z.string() }),
-  vendors: z.array(z.object({ name: z.string(), email: z.string(), address: z.string() })),
+  vendors: z.array(z.object({ name: z.string(), email: z.string(), address: z.string(), bank: z.string(), remitAccount: z.string() })),
   portalUsers: z.array(z.object({ username: z.string(), password: z.string(), displayName: z.string() })),
   portalInvoices: z.array(portalInvoice),
   financeRecords: z.array(financeRecord),
-  mail: z.array(
-    z.object({
-      fromName: z.string(),
-      fromAddress: z.string(),
-      subject: z.string(),
-      receivedAt: z.string(),
-      body: z.string(),
-      attachments: z.array(z.object({ invoice: z.string() })).optional(),
-    }),
-  ),
+  mail: z.array(mailFixture),
   fillerMailCount: z.number().int().nonnegative(),
   files: z.array(z.object({ path: z.string(), content: z.string() })),
   invoicePdfFiles: z.array(z.object({ path: z.string(), invoice: z.string() })),
@@ -50,6 +55,7 @@ const fixturesSchema = z.object({
       patchPortalInvoices: z
         .array(portalInvoice.partial().extend({ invoiceNumber: z.string() }))
         .optional(),
+      addMail: z.array(mailFixture).optional(),
     }),
   ),
   groundTruth: z.object({
@@ -78,6 +84,7 @@ export function fixturesFor(scenario: ScenarioId): Fixtures {
     Object.assign(target, p)
   }
   f.financeRecords.push(...(patch.addFinanceRecords ?? []))
+  f.mail.push(...(patch.addMail ?? []))
   return f
 }
 

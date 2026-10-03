@@ -14,6 +14,8 @@ Registered in `src/main/tools/registry.ts`. The model sees only registered tools
 ## Finance
 `search_records`, `get_record`, `create_record` (financial), `update_record` (financial)
 
+Financial tools run prechecks before the policy decision: duplicate check, value provenance, the policy document's due-date rule, and (for `create_record`) the remit-to account check against the vendor on file.
+
 ## Browser (Arcus Vendor Portal)
 `browser_open`, `browser_read` (accessibility snapshot with element refs), `browser_click`, `browser_type`, `browser_download`
 

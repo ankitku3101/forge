@@ -22,11 +22,11 @@ export function collectSources(messages: ChatMessage[]): Source[] {
 
   for (const m of messages) {
     if (m.role !== 'tool') continue
-    let obs: { ok?: boolean; data?: unknown }
+    let obs: { ok?: boolean; data?: unknown; security?: { flagged?: string[] } }
     try {
       obs = JSON.parse(m.content) as typeof obs
     } catch {
-      continue // truncated observation: not a trustworthy source
+      continue // unparseable observation: not a trustworthy source
     }
     if (!obs.ok || obs.data === undefined) continue
     const data = obs.data as Record<string, unknown>
@@ -34,7 +34,10 @@ export function collectSources(messages: ChatMessage[]): Source[] {
       sources.push({ id: m.toolCallId, label: 'your answer', fromUser: true, text: normalize(String(data.answer ?? '')) })
       continue
     }
-    sources.push({ id: m.toolCallId, label: labelFor(m.name, data), fromUser: false, text: normalize(leaves(data).join('\n')) })
+    // Text flagged as a prompt injection is never a valid source for a value.
+    let text = leaves(data).join('\n')
+    for (const span of obs.security?.flagged ?? []) text = text.split(span).join(' [flagged text removed] ')
+    sources.push({ id: m.toolCallId, label: labelFor(m.name, data), fromUser: false, text: normalize(text) })
   }
   return sources
 }
@@ -94,10 +97,17 @@ function tokenPattern(token: string): RegExp {
   return new RegExp(`(?<![a-z0-9])${escape(normalize(token.trim()))}(?![a-z0-9])`)
 }
 
-export type Field = { name: string; label: string; value: string | number; kind: 'amount' | 'date' | 'token' | 'text' }
+/** A bank account by its digits, allowing any spacing or dashes between them. */
+function accountPattern(account: string): RegExp {
+  const digits = account.replace(/\D/g, '').split('')
+  return new RegExp(`(?<!\\d)${digits.join('[\\s-]?')}(?!\\d)`)
+}
+
+export type Field = { name: string; label: string; value: string | number; kind: 'amount' | 'date' | 'token' | 'text' | 'account' }
 
 function patternFor(f: Field): RegExp {
   if (f.kind === 'amount') return amountPattern(Number(f.value))
+  if (f.kind === 'account') return accountPattern(String(f.value))
   if (f.kind === 'date') return datePattern(String(f.value))
   if (f.kind === 'token') return tokenPattern(String(f.value))
   return new RegExp(escape(normalize(String(f.value).trim())))

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { assertNotDuplicate, createRecord, getRecord, resolveVendor, searchRecords, updateRecord } from '../apps/finance'
+import { assertNotDuplicate, createRecord, getRecord, resolveVendor, sameAccount, searchRecords, updateRecord } from '../apps/finance'
 import { formatMoney } from '../sandbox/pdf'
 import type { LoadedPolicy } from '../agent/policy'
 import { traceFields, type Field } from '../agent/provenance'
@@ -11,15 +11,35 @@ const UNSOURCED = 'Not found in anything you opened during this task'
  * Every value written to Finance must come from an observed source. The amount and dates must sit
  * in the same source as the invoice number (e.g. the invoice PDF), unless the user stated them.
  */
-function traceNewRecord(ctx: ToolContext, i: { vendor: string; invoiceNumber: string; amount: number; issueDate: string | null; dueDate: string | null }) {
+function traceNewRecord(
+  ctx: ToolContext,
+  i: { vendor: string; invoiceNumber: string; amount: number; issueDate: string | null; dueDate: string | null; remitAccount: string | null },
+) {
   const fields: Field[] = [
     { name: 'vendor', label: 'Vendor', value: i.vendor, kind: 'text' },
     { name: 'invoiceNumber', label: 'Invoice number', value: i.invoiceNumber, kind: 'token' },
     { name: 'amount', label: 'Amount', value: i.amount, kind: 'amount' },
     ...(i.issueDate ? [{ name: 'issueDate', label: 'Issue date', value: i.issueDate, kind: 'date' as const }] : []),
     ...(i.dueDate ? [{ name: 'dueDate', label: 'Due date', value: i.dueDate, kind: 'date' as const }] : []),
+    ...(i.remitAccount ? [{ name: 'remitAccount', label: 'Remit-to account', value: i.remitAccount, kind: 'account' as const }] : []),
   ]
   return requireTrace(ctx, fields)
+}
+
+/**
+ * Compares the invoice's remit-to account with the vendor's account on file and applies the policy
+ * document's `remit_account_mismatch` rule. Returns a reason to force approval, or null.
+ */
+async function remitAccountRisk(ctx: ToolContext, i: { vendor: string; remitAccount: string | null }): Promise<string | null> {
+  if (!i.remitAccount) return null
+  const vendor = await resolveVendor(ctx.db, i.vendor)
+  if (sameAccount(vendor.remitAccount, i.remitAccount)) return null
+  const { policy, source } = ctx.policy
+  const warning = `The invoice asks for payment to account ${i.remitAccount}, but ${vendor.name}'s account on file is ${vendor.remitAccount}. A changed bank account is a common fraud pattern.`
+  if (policy.remit_account_mismatch === 'block') {
+    throw new ToolFailure('PERMISSION_DENIED', `${warning} Policy (${source}) blocks recording it. Do not record this invoice; tell the user so they can verify with the vendor through a known contact.`)
+  }
+  return policy.remit_account_mismatch === 'approve' ? `${warning} Policy (${source}) requires explicit approval.` : null
 }
 
 function traceUpdate(ctx: ToolContext, invoiceNumber: string, patch: { amount?: number; dueDate?: string | null }) {
@@ -32,7 +52,7 @@ function traceUpdate(ctx: ToolContext, invoiceNumber: string, patch: { amount?: 
 }
 
 function requireTrace(ctx: ToolContext, fields: Field[]): Record<string, string> {
-  const res = traceFields(ctx.sources, fields, { anchor: 'invoiceNumber', anchored: ['amount', 'issueDate', 'dueDate'] })
+  const res = traceFields(ctx.sources, fields, { anchor: 'invoiceNumber', anchored: ['amount', 'issueDate', 'dueDate', 'remitAccount'] })
   if (res.missing.length) {
     throw new ToolFailure('VALIDATION', `${UNSOURCED}: ${res.missing.join('; ')}. Open the source document (or ask the user) and use its exact values.`)
   }
@@ -99,12 +119,14 @@ export const financeTools = [
       issueDate: isoDate.nullable(),
       dueDate: isoDate.nullable(),
       status: status.default('unpaid'),
+      remitAccount: z.string().max(60).nullable().describe('Remit-to bank account number printed on the invoice, or null if it has none'),
       notes: z.string().max(1000).default(''),
     }),
     risk: 'financial',
     retry: 'transient',
     requiresApproval: true,
     errors: ['VALIDATION', 'NOT_FOUND', 'AMBIGUOUS', 'DUPLICATE_RECORD', 'TRANSIENT', 'PERMISSION_DENIED'],
+    approvalReason: (i, ctx) => remitAccountRisk(ctx, i),
     focus: (_i, out) => (out ? { kind: 'record', id: (out as { id: number }).id, changed: ['*'] } : { kind: 'records' }),
     approval: (i, ctx) => {
       const p = traceNewRecord(ctx, i)
@@ -117,6 +139,7 @@ export const financeTools = [
           Amount: formatMoney(Math.round(i.amount * 100), i.currency) + src('amount'),
           'Issue date': (i.issueDate ?? '—') + src('issueDate'),
           'Due date': (i.dueDate ?? 'none') + src('dueDate'),
+          'Remit to': (i.remitAccount ?? 'not printed') + src('remitAccount'),
           Status: i.status,
           ...(i.notes ? { Notes: i.notes } : {}),
         },
@@ -127,6 +150,7 @@ export const financeTools = [
       await assertNotDuplicate(ctx.db, i.vendor, i.invoiceNumber)
       traceNewRecord(ctx, i)
       if (i.dueDate === null) checkMissingDueDate(ctx.policy, i.notes)
+      await remitAccountRisk(ctx, i)
     },
     async execute(i, ctx) {
       const provenance = traceNewRecord(ctx, i)

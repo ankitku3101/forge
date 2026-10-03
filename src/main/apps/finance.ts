@@ -22,6 +22,7 @@ const columns = {
   issueDate: financeRecords.issueDate,
   dueDate: financeRecords.dueDate,
   status: financeRecords.status,
+  remitAccount: financeRecords.remitAccount,
   notes: financeRecords.notes,
   createdAt: financeRecords.createdAt,
   updatedAt: financeRecords.updatedAt,
@@ -86,7 +87,14 @@ export interface NewRecord {
   issueDate: string | null
   dueDate: string | null
   status: RecordStatus
+  remitAccount: string | null
   notes: string
+}
+
+/** Compares bank accounts by digits only, so "0042-117-4417" equals "0042 117 4417". */
+export function sameAccount(a: string, b: string): boolean {
+  const digits = (s: string) => s.replace(/\D/g, '')
+  return digits(a).length > 0 && digits(a) === digits(b)
 }
 
 async function findExisting(db: Db, vendorId: number, invoiceNumber: string) {
@@ -125,6 +133,7 @@ export async function createRecord(db: Db, faults: FinanceFaults, input: NewReco
         issueDate: input.issueDate,
         dueDate: input.dueDate,
         status: input.status,
+        remitAccount: input.remitAccount,
         notes: input.notes,
       })
       .returning({ id: financeRecords.id })

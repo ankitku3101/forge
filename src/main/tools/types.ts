@@ -57,6 +57,8 @@ interface ToolBase<I extends z.ZodType, O> {
   focus?: (input: z.output<I>, output?: O) => FocusTarget
   /** Short human summary for the approval card (financial tools). */
   approval?: (input: z.output<I>, ctx: ToolContext) => { title: string; details: Record<string, unknown> }
+  /** A reason that forces user approval regardless of amount (e.g. a policy-flagged risk), or null. */
+  approvalReason?: (input: z.output<I>, ctx: ToolContext) => Promise<string | null>
   /** Amount at stake, compared with the policy's approval threshold (financial tools). */
   approvalAmount?: (input: z.output<I>, ctx: ToolContext) => Promise<number | null>
   /**

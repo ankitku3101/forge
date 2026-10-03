@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import type { BrowserWindow } from 'electron'
 import type { IpcPushes, IpcPushChannel } from '@shared/ipc'
 import { isScenario, type ScenarioId } from '@shared/scenarios'
@@ -15,7 +14,7 @@ import type { LLMRouter } from '../llm/router'
 import type { DataPaths } from '../paths'
 import { createPortal, listen, type Portal, type RunningServer } from '../portal/server'
 import { Faults } from '../sandbox/faults'
-import { buildSandbox } from '../sandbox/seed'
+import { buildSandbox, SANDBOX_SCHEMA_VERSION } from '../sandbox/seed'
 import { createRegistry } from '../tools/registry'
 import { PortalView } from './portal-view'
 import { SettingsStore } from './settings'
@@ -49,10 +48,15 @@ export class AppController {
   async init(): Promise<void> {
     this.database = await openDatabase(this.paths.dbDir)
     const db = this.database.db
-    const [meta] = await db.select().from(sandboxMeta).where(eq(sandboxMeta.key, 'scenario'))
-    const hasVendors = (await db.select({ id: vendors.id }).from(vendors).limit(1)).length > 0
-    this.scenario = isScenario(meta?.value) ? meta.value : 'happy_path'
-    if (!meta || !hasVendors) await this.seed(this.scenario)
+    const meta = Object.fromEntries((await db.select().from(sandboxMeta).catch(() => [])).map((m) => [m.key, m.value]))
+    const hasVendors = await db
+      .select({ id: vendors.id })
+      .from(vendors)
+      .limit(1)
+      .then((r) => r.length > 0)
+      .catch(() => false)
+    this.scenario = isScenario(meta.scenario) ? meta.scenario : 'happy_path'
+    if (!hasVendors || meta.schemaVersion !== SANDBOX_SCHEMA_VERSION) await this.seed(this.scenario)
     this.faults = new Faults(this.scenario)
 
     this.portal = createPortal({ getDb: () => this.database.db, getFaults: () => this.faults })

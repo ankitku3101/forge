@@ -9,6 +9,7 @@ import {
   MessageCircleQuestion,
   RefreshCw,
   Scale,
+  ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
@@ -69,6 +70,20 @@ function Item({ item }: { item: ActivityItem }) {
           <span>
             Switched to fallback model <span className="font-mono">{item.to}</span> ({item.reason}).
           </span>
+        </div>
+      )
+    case 'security':
+      return (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-2 text-[12px]">
+          <div className="flex items-center gap-1.5 font-medium text-destructive">
+            <ShieldAlert className="size-3.5" /> Possible prompt injection in {item.tool} result
+          </div>
+          <p className="mt-1 text-muted-foreground">Flagged as untrusted. The worker was warned, and values in this text can't be used as sources.</p>
+          {item.snippets.map((s, i) => (
+            <blockquote key={i} className="mt-1.5 border-l-2 border-destructive/40 pl-2 font-mono text-[11px] whitespace-pre-wrap">
+              {s}
+            </blockquote>
+          ))}
         </div>
       )
     case 'verification':

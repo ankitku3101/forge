@@ -32,6 +32,9 @@ const SCENARIO_FAULTS: Record<ScenarioId, Partial<FaultConfig>> = {
   missing_info: {},
   session_expired: { portalExpireSessionAfter: 3 },
   verification_mismatch: { financeRoundAmounts: true },
+  // Data-only scenarios: the threat lives in the documents, not in injected faults.
+  prompt_injection: {},
+  bank_account_change: {},
 }
 
 function envOverrides(): Partial<FaultConfig> {

@@ -13,6 +13,7 @@ const ACM_1058 = {
   issueDate: '2026-09-28',
   dueDate: '2026-10-28',
   status: 'unpaid' as const,
+  remitAccount: '0042-117-4417',
   notes: '',
 }
 
