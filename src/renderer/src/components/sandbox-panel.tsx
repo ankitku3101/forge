@@ -18,7 +18,7 @@ interface Props {
 
 export function SandboxPanel({ view, onOpen, readOnly, portalUrl }: Props) {
   return (
-    <aside className="flex min-h-0 flex-col border-r bg-card">
+    <aside className="flex min-h-0 flex-1 flex-col border-r bg-card">
       <div className="flex h-10 shrink-0 items-center justify-between border-b px-3">
         <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Arcus sandbox</span>
         {readOnly && (

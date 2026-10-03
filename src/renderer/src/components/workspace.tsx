@@ -21,7 +21,7 @@ interface Props {
 
 export function Workspace({ view, pulse, following, readOnly, hidePortal }: Props) {
   return (
-    <section className="flex min-h-0 flex-col bg-background">
+    <section className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
         <ViewTitle view={view} />
         {following && (

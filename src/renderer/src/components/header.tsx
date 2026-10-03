@@ -53,11 +53,8 @@ export function Header({ app, busy, onState, onOverlay }: Props) {
           </SelectTrigger>
           <SelectContent>
             {SCENARIOS.map((s) => (
-              <SelectItem key={s} value={s}>
-                <div>
-                  <div>{SCENARIO_INFO[s].label}</div>
-                  <div className="text-[11px] text-muted-foreground">{SCENARIO_INFO[s].description}</div>
-                </div>
+              <SelectItem key={s} value={s} title={SCENARIO_INFO[s].description}>
+                {SCENARIO_INFO[s].label}
               </SelectItem>
             ))}
           </SelectContent>
