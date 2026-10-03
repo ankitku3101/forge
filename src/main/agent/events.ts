@@ -33,6 +33,11 @@ export class EventLog {
     return event
   }
 
+  /** Forgets cached sequence numbers after run history is cleared. */
+  forgetAll(): void {
+    this.seqs.clear()
+  }
+
   async list(runId: string): Promise<RunEvent[]> {
     const rows = await this.db.select().from(runEvents).where(eq(runEvents.runId, runId)).orderBy(asc(runEvents.seq))
     return rows.map((r) => ({ runId: r.runId, seq: r.seq, at: r.at, ...r.data }) as RunEvent)

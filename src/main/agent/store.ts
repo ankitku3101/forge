@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm'
 import type { RunInfo } from '@shared/types'
 import type { Db } from '../db/client'
-import { runs } from '../db/schema'
+import { runEvents, runs } from '../db/schema'
 
 export type RunState = typeof runs.$inferSelect
 
@@ -28,6 +28,12 @@ export class RunStore {
   async list(limit = 50): Promise<RunInfo[]> {
     const rows = await this.db.select().from(runs).orderBy(desc(runs.createdAt)).limit(limit)
     return rows.map(toInfo)
+  }
+
+  /** Deletes every run and its events (used by "Reset"). */
+  async clearAll(): Promise<void> {
+    await this.db.delete(runEvents)
+    await this.db.delete(runs)
   }
 
   async findActive(): Promise<RunState[]> {

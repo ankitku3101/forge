@@ -49,14 +49,24 @@ export function App() {
   return (
     <TooltipProvider>
       <div className="flex h-full flex-col">
-        <Header app={app} busy={Boolean(app.activeRunId)} onState={setApp} onOverlay={setOverlay} />
+        <Header
+          app={app}
+          busy={Boolean(app.activeRunId)}
+          onState={setApp}
+          onOverlay={setOverlay}
+          onSandboxRebuilt={() => {
+            setRunId(null)
+            setManualView({ kind: 'none' })
+            setFollowing(false)
+          }}
+        />
         {app.interruptedRunId && !active && (
-          <div className="flex items-center gap-3 border-b bg-warning/10 px-4 py-1.5 text-[12.5px]">
-            A task was interrupted when the app closed.
+          <div className="flex h-11 shrink-0 items-center gap-3 border-b bg-warning/10 px-4 text-xs">
+            <span className="font-medium text-warning">A task was interrupted when the app closed.</span>
             <Button
               size="sm"
               variant="outline"
-              className="h-7"
+              className="ml-auto h-8 bg-card"
               onClick={async () => {
                 setRunId(app.interruptedRunId)
                 setFollowing(true)
@@ -68,7 +78,7 @@ export function App() {
             </Button>
           </div>
         )}
-        <div className="grid min-h-0 flex-1 grid-cols-[272px_minmax(0,1fr)_360px] grid-rows-[minmax(0,1fr)_minmax(180px,34%)]">
+        <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_384px] grid-rows-[minmax(0,1fr)_minmax(208px,36%)]">
           <div className="row-span-2 flex min-h-0 flex-col">
             <ErrorBoundary label="Sandbox">
               <SandboxPanel view={view} onOpen={open} readOnly={Boolean(app.activeRunId)} portalUrl={app.portalUrl} />
@@ -79,8 +89,8 @@ export function App() {
               <Workspace view={view} pulse={pulse} following={active && following} readOnly={Boolean(app.activeRunId)} hidePortal={overlay} />
             </ErrorBoundary>
             {active && !following && (
-              <button className="border-t bg-accent py-1 text-[12px] text-accent-foreground hover:underline" onClick={() => setFollowing(true)}>
-                Follow the worker again
+              <button className="h-9 shrink-0 border-t bg-accent text-xs font-medium text-accent-foreground hover:underline" onClick={() => setFollowing(true)}>
+                You're browsing on your own · Follow the worker again
               </button>
             )}
           </div>

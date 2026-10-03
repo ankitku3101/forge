@@ -1,11 +1,10 @@
-import { Bot, KeyRound, Loader2, Lock, Play, ShieldCheck, ShieldQuestion, Square, User } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { ArrowUp, KeyRound, Loader2, Lock, ShieldCheck, ShieldQuestion, Square, TriangleAlert } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AppState, PendingRequest, RunInfo, UserResponse } from '@shared/types'
 import { EXAMPLE_TASKS } from '@shared/examples'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Textarea } from '@/components/ui/textarea'
 import type { ChatItem } from '@/hooks/use-run'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -34,7 +33,7 @@ export function ChatPanel({ app, run, items, onStarted, onShowPortal }: Props) {
   return (
     <section className="flex min-h-0 flex-col border-t bg-card">
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto max-w-3xl space-y-2.5 px-4 py-3">
+        <div className="mx-auto max-w-3xl space-y-4 px-6 py-4">
           {items.length === 0 && <Welcome app={app} />}
           {items.map((item) => (
             <Message key={item.id} item={item} />
@@ -45,56 +44,68 @@ export function ChatPanel({ app, run, items, onStarted, onShowPortal }: Props) {
           <div ref={bottom} />
         </div>
       </ScrollArea>
-      <div className="mx-auto w-full max-w-3xl px-4 pb-3">
-        {active ? <Working run={run} /> : <Composer app={app} onStarted={onStarted} />}
-      </div>
+      <div className="mx-auto w-full max-w-3xl px-6 pb-4">{active ? <Working run={run} /> : <Composer app={app} onStarted={onStarted} />}</div>
     </section>
   )
 }
 
 function Welcome({ app }: { app: AppState }) {
   return (
-    <div className="py-2 text-muted-foreground">
-      Give the worker a task inside Arcus. It plans, uses the apps on the left, asks you when it needs approval or a sign-in, and verifies its work.
-      {!app.hasPrimaryKey && <div className="mt-2 text-warning">No Groq API key yet. Add one in Settings (gear icon) or in .env.</div>}
+    <div className="space-y-2 pt-2">
+      <p className="text-base font-semibold">What should the worker do?</p>
+      <p className="max-w-prose text-muted-foreground">
+        Give it a task inside Arcus. It plans, uses the apps on the left, asks you before anything financial or any sign-in, and has its work verified independently.
+      </p>
+      {!app.hasPrimaryKey && (
+        <p className="flex items-center gap-2 text-warning">
+          <TriangleAlert className="size-4 shrink-0" /> Add a Groq API key in Settings, or set GROQ_API_KEY in .env, before starting a task.
+        </p>
+      )}
     </div>
   )
+}
+
+/** Role label above a message: one quiet line, no avatars. */
+function Who({ children, tone }: { children: ReactNode; tone?: 'success' | 'danger' }) {
+  return <div className={cn('mb-1 text-2xs font-semibold text-muted-foreground', tone === 'success' && 'text-success', tone === 'danger' && 'text-destructive')}>{children}</div>
 }
 
 function Message({ item }: { item: ChatItem }) {
   if (item.kind === 'task' || item.kind === 'user') {
     return (
-      <div className="flex justify-end gap-2">
-        <div className={cn('max-w-[80%] rounded-lg px-3 py-2', item.kind === 'task' ? 'bg-primary text-primary-foreground' : 'bg-secondary')}>{item.text}</div>
-        <User className="mt-2 size-4 shrink-0 text-muted-foreground" />
+      <div className="flex flex-col items-end">
+        <Who>{item.kind === 'task' ? 'Your task' : 'You'}</Who>
+        <div className="max-w-[80%] rounded-lg bg-secondary px-4 py-2 text-secondary-foreground">{item.text}</div>
       </div>
     )
   }
   if (item.kind === 'worker') {
     return (
-      <div className="flex gap-2">
-        <Bot className="mt-2 size-4 shrink-0 text-primary" />
-        <div className="max-w-[80%] rounded-lg border bg-background px-3 py-2">{item.text}</div>
+      <div>
+        <Who>Worker</Who>
+        <div className="max-w-[80%]">{item.text}</div>
       </div>
     )
   }
   if (item.kind === 'failure') {
     return (
-      <div className="flex gap-2">
-        <Bot className="mt-2 size-4 shrink-0 text-destructive" />
-        <div className="max-w-[85%] rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2">{item.text}</div>
+      <div>
+        <Who tone="danger">Worker · stopped</Who>
+        <div className="max-w-[85%] rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 wrap-break-word">{item.text}</div>
       </div>
     )
   }
+  const passed = item.verification.checks.filter((c) => c.status === 'verified').length
   return (
-    <div className="flex gap-2">
-      <Bot className="mt-2 size-4 shrink-0 text-success" />
-      <div className="max-w-[85%] rounded-lg border bg-background px-3 py-2">
-        <div className="whitespace-pre-wrap">{item.text}</div>
-        <div className="mt-2 flex items-center gap-2 border-t pt-2 text-[12px] text-muted-foreground">
-          <ShieldCheck className="size-3.5" /> Verification <StatusBadge status={item.verification.status} />
-          <span>
-            {item.verification.checks.filter((c) => c.status === 'verified').length}/{item.verification.checks.length} checks passed
+    <div>
+      <Who tone="success">Worker · done</Who>
+      <div className="max-w-[85%] overflow-hidden rounded-lg border">
+        <div className="px-4 py-3 leading-6 whitespace-pre-wrap">{item.text}</div>
+        <div className="flex items-center gap-2 border-t bg-secondary px-4 py-2 text-xs text-muted-foreground">
+          <ShieldCheck className="size-3.5" /> Verification
+          <StatusBadge status={item.verification.status} />
+          <span className="tabular-nums">
+            {passed} of {item.verification.checks.length} checks passed
           </span>
         </div>
       </div>
@@ -116,12 +127,21 @@ function PendingCard({ pending, runId, onRespond, onShowPortal }: { pending: Pen
     }
   }
   return (
-    <div className="ml-6 rounded-lg border-2 border-warning/50 bg-background p-3">
+    <div className="overflow-hidden rounded-lg border border-warning/50 bg-card shadow-xs">
       {pending.kind === 'approval' && <ApprovalForm pending={pending} busy={busy} onSend={send} />}
       {pending.kind === 'question' && <QuestionForm pending={pending} busy={busy} onSend={send} />}
       {pending.kind === 'credentials' && <CredentialsForm site={pending.site} busy={busy} onSend={send} onShowPortal={onShowPortal} />}
       {pending.kind === 'captcha' && <CaptchaForm runId={runId} busy={busy} onSend={send} onShowPortal={onShowPortal} />}
-      {error && <div className="mt-2 text-[12px] text-destructive">{error}</div>}
+      {error && <div className="border-t px-4 py-2 text-xs text-destructive">{error}</div>}
+    </div>
+  )
+}
+
+function CardHead({ icon: Icon, children }: { icon: typeof KeyRound; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 border-b bg-warning/8 px-4 py-2 font-medium">
+      <Icon className="size-4 shrink-0 text-warning" />
+      <span className="min-w-0">{children}</span>
     </div>
   )
 }
@@ -130,25 +150,32 @@ type FormProps<K extends PendingRequest['kind']> = { pending: Extract<PendingReq
 
 function ApprovalForm({ pending, busy, onSend }: FormProps<'approval'>) {
   const [note, setNote] = useState('')
+  const { Policy: policy, ...fields } = pending.details
   return (
     <div>
-      <div className="flex items-center gap-2 font-medium">
-        <ShieldQuestion className="size-4 text-warning" /> Approval needed: {pending.title}
-      </div>
-      <dl className="mt-2 grid grid-cols-[120px_1fr] gap-x-3 gap-y-1 text-[12.5px]">
-        {Object.entries(pending.details).map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-muted-foreground">{k}</dt>
-            <dd className="font-mono">{String(v)}</dd>
-          </div>
-        ))}
+      <CardHead icon={ShieldQuestion}>Approval needed · {pending.title}</CardHead>
+      <dl className="grid grid-cols-[7rem_1fr] gap-x-4 gap-y-2 px-4 py-3 text-xs">
+        {Object.entries(fields).map(([k, raw]) => {
+          // Values arrive as "value  ← source"; show the source on its own muted line.
+          const [value, source] = String(raw).split('  ← ')
+          return (
+            <div key={k} className="contents">
+              <dt className="pt-px text-muted-foreground">{k}</dt>
+              <dd className="min-w-0">
+                <span className="font-mono">{value}</span>
+                {source && <span className="block text-2xs text-muted-foreground">from {source}</span>}
+              </dd>
+            </div>
+          )
+        })}
       </dl>
-      <div className="mt-3 flex gap-2">
-        <Input placeholder="Optional note if rejecting" value={note} onChange={(e) => setNote(e.target.value)} className="h-8" />
-        <Button size="sm" disabled={busy} onClick={() => onSend({ kind: 'approval', approved: true })}>
+      {policy !== undefined && <p className="border-t px-4 py-2 text-xs text-muted-foreground">{String(policy)}</p>}
+      <div className="flex gap-2 border-t bg-secondary px-4 py-3">
+        <Input placeholder="Optional note if rejecting" value={note} onChange={(e) => setNote(e.target.value)} className="h-9 bg-card" />
+        <Button disabled={busy} onClick={() => onSend({ kind: 'approval', approved: true })}>
           Approve
         </Button>
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => onSend({ kind: 'approval', approved: false, ...(note ? { note } : {}) })}>
+        <Button variant="outline" disabled={busy} onClick={() => onSend({ kind: 'approval', approved: false, ...(note ? { note } : {}) })}>
           Reject
         </Button>
       </div>
@@ -160,36 +187,49 @@ function QuestionForm({ pending, busy, onSend }: FormProps<'question'>) {
   const [text, setText] = useState('')
   return (
     <div>
-      <div className="font-medium">{pending.question}</div>
-      {pending.options && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {pending.options.map((o) => (
-            <Button key={o} size="sm" variant="outline" disabled={busy} onClick={() => onSend({ kind: 'answer', text: o })}>
-              {o}
-            </Button>
-          ))}
-        </div>
-      )}
-      <form
-        className="mt-2 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (text.trim()) onSend({ kind: 'answer', text: text.trim() })
-        }}
-      >
-        <Input className="h-8" placeholder="Type an answer" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
-        <Button size="sm" disabled={busy || !text.trim()}>
-          Send
-        </Button>
-      </form>
+      <CardHead icon={ShieldQuestion}>{pending.question}</CardHead>
+      <div className="space-y-3 px-4 py-3">
+        {pending.options && (
+          <div className="flex flex-wrap gap-2">
+            {pending.options.map((o) => (
+              <Button key={o} size="sm" variant="outline" disabled={busy} onClick={() => onSend({ kind: 'answer', text: o })}>
+                {o}
+              </Button>
+            ))}
+          </div>
+        )}
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (text.trim()) onSend({ kind: 'answer', text: text.trim() })
+          }}
+        >
+          <Input className="h-9" placeholder="Type an answer" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+          <Button disabled={busy || !text.trim()}>Send</Button>
+        </form>
+      </div>
     </div>
   )
 }
 
-function SecureNote() {
+function SecureFooter({ busy, onSend, onShowPortal }: { busy: boolean; onSend: (r: UserResponse) => void; onShowPortal: () => void }) {
   return (
-    <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-      <Lock className="size-3" /> Entered straight into the portal page. Never shown to the AI, logged or stored.
+    <div className="space-y-1 border-t bg-secondary px-4 py-2 text-xs text-muted-foreground">
+      <p className="flex items-center gap-2">
+        <Lock className="size-3.5 shrink-0" /> Typed straight into the portal page. Never shown to the AI, logged or stored.
+      </p>
+      <p>
+        Or{' '}
+        <button type="button" className="font-medium text-primary hover:underline" onClick={onShowPortal}>
+          type it into the live page
+        </button>
+        , then{' '}
+        <button type="button" disabled={busy} className="font-medium text-primary hover:underline" onClick={() => onSend({ kind: 'done_in_page' })}>
+          tell the worker you're done
+        </button>
+        .
+      </p>
     </div>
   )
 }
@@ -204,18 +244,13 @@ function CredentialsForm({ site, busy, onSend, onShowPortal }: { site: string; b
         onSend({ kind: 'credentials', username, password })
       }}
     >
-      <div className="flex items-center gap-2 font-medium">
-        <KeyRound className="size-4 text-warning" /> Sign in to {site}
+      <CardHead icon={KeyRound}>Sign in to {site}</CardHead>
+      <div className="flex gap-2 px-4 py-3">
+        <Input className="h-9" placeholder="Username" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+        <Input className="h-9" type="password" placeholder="Password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Button disabled={busy || !username || !password}>Sign in</Button>
       </div>
-      <div className="mt-2 flex gap-2">
-        <Input className="h-8" placeholder="Username" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
-        <Input className="h-8" type="password" placeholder="Password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
-        <Button size="sm" disabled={busy || !username || !password}>
-          Sign in
-        </Button>
-      </div>
-      <SecureNote />
-      <DoneInPage busy={busy} onSend={onSend} onShowPortal={onShowPortal} />
+      <SecureFooter busy={busy} onSend={onSend} onShowPortal={onShowPortal} />
     </form>
   )
 }
@@ -233,51 +268,35 @@ function CaptchaForm({ runId, busy, onSend, onShowPortal }: { runId: string; bus
         onSend({ kind: 'captcha', answer })
       }}
     >
-      <div className="flex items-center gap-2 font-medium">
-        <KeyRound className="size-4 text-warning" /> Solve the portal captcha
-      </div>
-      <div className="mt-2 flex items-center gap-2">
+      <CardHead icon={KeyRound}>Solve the portal captcha</CardHead>
+      <div className="flex items-center gap-2 px-4 py-3">
         {svg ? (
-          <img alt="captcha" className="h-12 rounded border bg-[#f7f2e7]" src={`data:image/svg+xml;base64,${btoa(svg)}`} />
+          // The captcha keeps the portal's own paper colour so its contrast stays as designed.
+          <img alt="captcha" className="h-12 rounded-md border bg-white" src={`data:image/svg+xml;base64,${btoa(svg)}`} />
         ) : (
           <span className="text-muted-foreground">Loading captcha…</span>
         )}
-        <Input className="h-8 w-36 font-mono" placeholder="Characters" autoComplete="off" value={answer} onChange={(e) => setAnswer(e.target.value)} autoFocus />
-        <Button size="sm" disabled={busy || !answer}>
-          Submit
-        </Button>
+        <Input className="h-9 w-40 font-mono" placeholder="Characters" autoComplete="off" value={answer} onChange={(e) => setAnswer(e.target.value)} autoFocus />
+        <Button disabled={busy || !answer}>Submit</Button>
       </div>
-      <SecureNote />
-      <DoneInPage busy={busy} onSend={onSend} onShowPortal={onShowPortal} />
+      <SecureFooter busy={busy} onSend={onSend} onShowPortal={onShowPortal} />
     </form>
   )
 }
 
-function DoneInPage({ busy, onSend, onShowPortal }: { busy: boolean; onSend: (r: UserResponse) => void; onShowPortal: () => void }) {
-  return (
-    <div className="mt-1 text-[11.5px] text-muted-foreground">
-      Or{' '}
-      <button type="button" className="text-primary hover:underline" onClick={onShowPortal}>
-        type it into the live portal page
-      </button>
-      , then{' '}
-      <button type="button" disabled={busy} className="text-primary hover:underline" onClick={() => onSend({ kind: 'done_in_page' })}>
-        tell the worker you're done
-      </button>
-      .
-    </div>
-  )
-}
-
 function Working({ run }: { run: RunInfo }) {
+  const waiting = run.status === 'awaiting_user'
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2">
-      {run.status === 'running' ? (
-        <>
-          <Loader2 className="size-4 animate-spin text-primary" /> <span>Worker is on it… step {run.stepCount}</span>
-        </>
+    <div className="flex h-12 items-center gap-3 rounded-lg border bg-background px-4">
+      {waiting ? (
+        <span className="flex items-center gap-2 font-medium text-warning">
+          <ShieldQuestion className="size-4" /> Waiting for you, see the card above
+        </span>
       ) : (
-        <span className="text-warning">The worker is waiting for you (see above).</span>
+        <span className="flex items-center gap-2">
+          <Loader2 className="size-4 animate-spin text-primary" />
+          Working · step <span className="tabular-nums">{run.stepCount}</span>
+        </span>
       )}
       <Button size="sm" variant="ghost" className="ml-auto" onClick={() => api.invoke('run:cancel', { runId: run.id })}>
         <Square className="size-3.5" /> Stop
@@ -305,25 +324,19 @@ function Composer({ app, onStarted }: { app: AppState; onStarted: (id: string) =
   }
   const examples = EXAMPLE_TASKS.filter((e) => !e.scenarios || e.scenarios.includes(app.scenario))
   return (
-    <div>
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {examples.map((e) => (
-          <button key={e.label} className="rounded-full border px-2.5 py-0.5 text-[12px] text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => setTask(e.task)}>
-            {e.label}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-2">
       <form
-        className="flex gap-2"
+        className="rounded-lg border border-input bg-background shadow-xs transition-colors focus-within:border-ring"
         onSubmit={(e) => {
           e.preventDefault()
           if (task.trim()) void start(task.trim())
         }}
       >
-        <Textarea
+        <textarea
           rows={2}
-          className="min-h-0 resize-none"
-          placeholder="Describe a task, e.g. “Get the latest unpaid invoice from Acme Supplies on the vendor portal and add it to Finance.”"
+          className="block w-full resize-none bg-transparent px-4 pt-3 outline-none placeholder:text-muted-foreground"
+          placeholder="Describe a task for the worker…"
+          aria-label="Task"
           value={task}
           onChange={(e) => setTask(e.target.value)}
           onKeyDown={(e) => {
@@ -333,11 +346,26 @@ function Composer({ app, onStarted }: { app: AppState; onStarted: (id: string) =
             }
           }}
         />
-        <Button className="h-auto" disabled={busy || !task.trim()}>
-          <Play /> Start
-        </Button>
+        <div className="flex items-center gap-2 px-2 pb-2">
+          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
+            {examples.map((e) => (
+              <button
+                key={e.label}
+                type="button"
+                title={e.task}
+                className="h-7 shrink-0 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                onClick={() => setTask(e.task)}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+          <Button size="sm" disabled={busy || !task.trim()} aria-label="Start">
+            Start <ArrowUp />
+          </Button>
+        </div>
       </form>
-      {error && <div className="mt-1.5 text-[12px] text-destructive">{error}</div>}
+      {error && <p className="px-1 text-xs text-destructive">{error}</p>}
     </div>
   )
 }

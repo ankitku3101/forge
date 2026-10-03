@@ -15,9 +15,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode; label: strin
   override render() {
     if (!this.state.error) return this.props.children
     return (
-      <div className="m-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-[12px]">
+      <div className="m-3 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
         <div className="font-medium text-destructive">The {this.props.label} panel hit an error</div>
-        <pre className="mt-1 font-mono text-[11px] whitespace-pre-wrap">{this.state.error.message}</pre>
+        <pre className="mt-1 font-mono text-2xs whitespace-pre-wrap">{this.state.error.message}</pre>
         <button className="mt-2 text-primary hover:underline" onClick={() => this.setState({ error: null })}>
           Try again
         </button>

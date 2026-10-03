@@ -4,26 +4,28 @@ import {
   ChevronDown,
   Circle,
   CircleDot,
-  ListChecks,
-  Clock,
+  CircleSlash,
+  Hourglass,
   KeyRound,
+  ListChecks,
   Loader2,
   MessageCircleQuestion,
+  MessageSquareText,
   RefreshCw,
   Scale,
   ShieldAlert,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
-  Sparkles,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { RunInfo, WorkItem } from '@shared/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { ActivityItem } from '@/hooks/use-run'
 import { formatTime } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { PanelHeader } from './panel-header'
 import { StatusBadge } from './status-badge'
 
 export function ActivityPanel({ run, items, worklist }: { run: RunInfo | null; items: ActivityItem[]; worklist: WorkItem[] }) {
@@ -35,19 +37,25 @@ export function ActivityPanel({ run, items, worklist }: { run: RunInfo | null; i
 
   return (
     <aside className="flex min-h-0 flex-1 flex-col border-l bg-card">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-        <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Activity</span>
+      <PanelHeader title="Activity">
         {run && (
           <>
-            <StatusBadge status={run.status} className="ml-auto" />
-            <span className="text-[11px] text-muted-foreground">{run.stepCount} steps</span>
+            <span className="text-2xs text-muted-foreground tabular-nums">
+              {run.stepCount} {run.stepCount === 1 ? 'step' : 'steps'}
+            </span>
+            <StatusBadge status={run.status} />
           </>
         )}
-      </div>
+      </PanelHeader>
       {worklist.length > 0 && <WorkItems items={worklist} />}
-      <ScrollArea className="min-h-0 flex-1">
-        <ol className="space-y-1.5 p-3">
-          {items.length === 0 && <li className="py-8 text-center text-muted-foreground">Every step the worker takes shows up here: tool, result, retries, approvals and verification.</li>}
+      <ScrollArea className="min-h-0 flex-1 bg-background">
+        <ol className="space-y-2 p-4">
+          {items.length === 0 && (
+            <li className="space-y-2 py-12 text-center">
+              <ListChecks className="mx-auto size-6 text-muted-foreground" />
+              <p className="text-muted-foreground">Every step the worker takes appears here: the tool, its result, retries, approvals and verification.</p>
+            </li>
+          )}
           {items.map((item) => (
             <li key={item.id}>
               <Item item={item} />
@@ -60,45 +68,83 @@ export function ActivityPanel({ run, items, worklist }: { run: RunInfo | null; i
   )
 }
 
+/** Shared card shell: same radius, border and padding for every activity entry. */
+function Card({ tone = 'plain', children }: { tone?: 'plain' | 'success' | 'warning' | 'danger'; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card',
+        tone === 'success' && 'border-success/40',
+        tone === 'warning' && 'border-warning/50',
+        tone === 'danger' && 'border-destructive/40',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** A detail line under a card's header row. */
+function Line({ icon: Icon, tone, children }: { icon: typeof Scale; tone?: 'muted' | 'warning' | 'danger'; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-2 border-t px-3 py-2 text-xs',
+        (tone ?? 'muted') === 'muted' && 'text-muted-foreground',
+        tone === 'warning' && 'text-warning',
+        tone === 'danger' && 'text-destructive',
+      )}
+    >
+      <Icon className="mt-0.5 size-3.5 shrink-0" />
+      <div className="min-w-0 flex-1 wrap-break-word">{children}</div>
+    </div>
+  )
+}
+
 function Item({ item }: { item: ActivityItem }) {
   switch (item.kind) {
-    case 'note':
+    case 'note': {
+      const waiting = item.text.startsWith('Waiting ')
+      const Icon = waiting ? Hourglass : MessageSquareText
       return (
-        <div className="flex gap-2 px-1 py-1 text-[12px] text-muted-foreground italic">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0" />
-          <span className="whitespace-pre-wrap">{item.text}</span>
+        <div className={cn('flex gap-2 px-1 py-1 text-xs', waiting ? 'text-muted-foreground' : 'text-foreground')}>
+          <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 wrap-break-word whitespace-pre-wrap">{item.text}</span>
         </div>
       )
+    }
     case 'fallback':
       return (
-        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[12px]">
-          <RefreshCw className="mt-0.5 size-3.5 shrink-0 text-warning" />
-          <span>
-            Switched to fallback model <span className="font-mono">{item.to}</span> ({item.reason}).
-          </span>
-        </div>
+        <Card tone="warning">
+          <Line icon={RefreshCw} tone="warning">
+            Switched to the fallback model <span className="font-mono">{item.to}</span> ({item.reason}).
+          </Line>
+        </Card>
       )
     case 'security':
       return (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-2.5 py-2 text-[12px]">
-          <div className="flex items-center gap-1.5 font-medium text-destructive">
-            <ShieldAlert className="size-3.5" /> Possible prompt injection in {item.tool} result
+        <Card tone="danger">
+          <div className="flex items-center gap-2 px-3 py-2 font-medium text-destructive">
+            <ShieldAlert className="size-4 shrink-0" />
+            Possible prompt injection
           </div>
-          <p className="mt-1 text-muted-foreground">Flagged as untrusted. The worker was warned, and values in this text can't be used as sources.</p>
+          <Line icon={ShieldAlert}>
+            Text in the <span className="font-mono">{item.tool}</span> result tried to instruct the worker. It was flagged as untrusted, and no value inside it can be used as a source.
+          </Line>
           {item.snippets.map((s, i) => (
-            <blockquote key={i} className="mt-1.5 border-l-2 border-destructive/40 pl-2 font-mono text-[11px] whitespace-pre-wrap">
+            <blockquote key={i} className="border-t bg-destructive/5 px-3 py-2 font-mono text-2xs leading-4 wrap-break-word whitespace-pre-wrap">
               {s}
             </blockquote>
           ))}
-        </div>
+        </Card>
       )
     case 'verification':
       return <Verification item={item} />
     case 'end':
       return (
-        <div className={cn('flex items-start gap-2 rounded-md px-2.5 py-2 font-medium', item.ok ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')}>
+        <div className={cn('flex items-start gap-2 rounded-lg px-3 py-2 font-medium', item.ok ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')}>
           {item.ok ? <Check className="mt-0.5 size-4 shrink-0" /> : <X className="mt-0.5 size-4 shrink-0" />}
-          <span>{item.text}</span>
+          <span className="min-w-0 wrap-break-word">{item.text}</span>
         </div>
       )
     case 'step':
@@ -107,53 +153,54 @@ function Item({ item }: { item: ActivityItem }) {
 }
 
 const WAIT_ICON = { approval: ShieldQuestion, question: MessageCircleQuestion, credentials: KeyRound, captcha: KeyRound }
-const WAIT_TEXT = { approval: 'Waiting for your approval', question: 'Waiting for your answer', credentials: 'Waiting for sign-in', captcha: 'Waiting for captcha' }
+const WAIT_TEXT = { approval: 'Waiting for your approval', question: 'Waiting for your answer', credentials: 'Waiting for you to sign in', captcha: 'Waiting for the captcha' }
+const DECISION = { auto: 'Auto-approved', approval: 'Needs approval', deny: 'Denied' }
 
 function Step({ item }: { item: Extract<ActivityItem, { kind: 'step' }> }) {
   const [open, setOpen] = useState(false)
-  const WaitIcon = item.waitingFor ? WAIT_ICON[item.waitingFor] : Clock
   return (
-    <div className={cn('rounded-md border bg-background', item.status === 'error' && 'border-destructive/40', item.status === 'waiting' && 'border-warning/60')}>
-      <button className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left" onClick={() => setOpen(!open)}>
+    <Card tone={item.status === 'error' ? 'danger' : item.status === 'waiting' ? 'warning' : 'plain'}>
+      <button className="flex h-9 w-full items-center gap-2 px-3 text-left hover:bg-accent/40" onClick={() => setOpen(!open)} aria-expanded={open}>
         <StepIcon status={item.status} />
-        <span className="font-mono text-[12px] font-medium">{item.tool}</span>
-        {item.risk === 'financial' && <span className="rounded bg-warning/15 px-1 text-[10px] text-warning">financial</span>}
-        <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{summarizeInput(item.input)}</span>
+        <span className="shrink-0 font-mono text-xs font-medium">{item.tool}</span>
+        {item.risk === 'financial' && <span className="shrink-0 rounded-sm bg-warning/12 px-1.5 text-2xs font-medium text-warning">Financial</span>}
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{summarizeInput(item.input)}</span>
         <ChevronDown className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
       {item.policy && (
-        <div className="flex items-start gap-1.5 border-t px-2.5 py-1 text-[11px] text-muted-foreground">
-          <Scale className="mt-px size-3 shrink-0" />
-          <span>
-            {item.policy.decision === 'auto' ? 'Auto-approved' : item.policy.decision === 'approval' ? 'Needs approval' : 'Denied'}: {item.policy.reason}
-            {item.policy.warning && <span className="block text-warning">{item.policy.warning}</span>}
-          </span>
-        </div>
+        <Line icon={Scale}>
+          <span className="font-medium text-foreground">{DECISION[item.policy.decision]}.</span> {item.policy.reason}
+          {item.policy.warning && <span className="mt-1 block text-warning">{item.policy.warning}</span>}
+        </Line>
       )}
       {item.retries.map((r) => (
-        <div key={r.attempt} className="flex items-center gap-1.5 border-t px-2.5 py-1 text-[11px] text-warning">
-          <RefreshCw className="size-3" /> Retry {r.attempt - 1}: {r.message}
-        </div>
+        <Line key={r.attempt} icon={RefreshCw} tone="warning">
+          Retry {r.attempt - 1}: {r.message}
+        </Line>
       ))}
       {item.status === 'waiting' && item.waitingFor && (
-        <div className="flex items-center gap-1.5 border-t px-2.5 py-1 text-[11px] text-warning">
-          <WaitIcon className="size-3" /> {WAIT_TEXT[item.waitingFor]}
-        </div>
+        <Line icon={WAIT_ICON[item.waitingFor]} tone="warning">
+          {WAIT_TEXT[item.waitingFor]}
+        </Line>
       )}
-      {item.response && <div className="border-t px-2.5 py-1 text-[11px] text-muted-foreground">You: {item.response}</div>}
+      {item.response && <Line icon={Check}>You: {item.response}</Line>}
       {item.error && (
-        <div className="border-t px-2.5 py-1 text-[11px] text-destructive">
-          <span className="font-mono">{item.error.code}</span> {item.error.message}
-        </div>
+        <Line icon={AlertTriangle} tone="danger">
+          <span className="font-mono">{item.error.code}</span> · {item.error.message}
+        </Line>
       )}
       {open && (
-        <div className="space-y-2 border-t px-2.5 py-2 text-[11px]">
-          <Meta label="Step" value={`${item.step} · ${formatTime(item.at)}${item.durationMs ? ` · ${item.durationMs} ms` : ''}${item.model ? ` · ${item.model}` : ''}`} />
+        <div className="space-y-3 border-t px-3 py-3 text-xs">
+          <p className="text-muted-foreground">
+            Step {item.step} · {formatTime(item.at)}
+            {item.durationMs ? ` · ${item.durationMs} ms` : ''}
+            {item.model ? ` · ${item.model}` : ''}
+          </p>
           <Json label="Input" value={item.input} />
           {item.output !== undefined && <Json label="Result" value={item.output} />}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -162,56 +209,81 @@ function StepIcon({ status }: { status: string }) {
   if (status === 'ok') return <Check className="size-3.5 shrink-0 text-success" />
   if (status === 'error') return <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
   if (status === 'waiting') return <CircleDot className="size-3.5 shrink-0 text-warning" />
+  if (status === 'stopped') return <CircleSlash className="size-3.5 shrink-0 text-muted-foreground" aria-label="Stopped" />
   return null
 }
+
+const CHECK_LABELS = { write: 'Write', provenance: 'Provenance', outcome: 'Ground truth', item: 'Item' } as const
+const CHECK_HINTS = { outcome: 'Compared with the sandbox fixtures. Only available in the sandbox.' } as Partial<Record<keyof typeof CHECK_LABELS, string>>
 
 function Verification({ item }: { item: Extract<ActivityItem, { kind: 'verification' }> }) {
   const { status, checks } = item.result
   const Icon = status === 'verified' ? ShieldCheck : status === 'mismatch' ? ShieldX : ShieldQuestion
   return (
-    <div className={cn('rounded-md border px-2.5 py-2', status === 'verified' ? 'border-success/40 bg-success/5' : status === 'mismatch' ? 'border-destructive/40 bg-destructive/5' : '')}>
-      <div className="flex items-center gap-2 font-medium">
-        <Icon className={cn('size-4', status === 'verified' ? 'text-success' : status === 'mismatch' ? 'text-destructive' : 'text-muted-foreground')} />
-        Independent verification <StatusBadge status={status} className="ml-auto" />
+    <Card tone={status === 'verified' ? 'success' : status === 'mismatch' ? 'danger' : 'plain'}>
+      <div className="flex h-9 items-center gap-2 px-3 font-medium">
+        <Icon className={cn('size-4 shrink-0', status === 'verified' ? 'text-success' : status === 'mismatch' ? 'text-destructive' : 'text-muted-foreground')} />
+        Independent verification
+        <StatusBadge status={status} className="ml-auto" />
       </div>
-      <ul className="mt-1.5 space-y-1 text-[11.5px]">
+      <ul className="divide-y border-t">
         {checks.map((c, i) => (
-          <li key={i} className="flex gap-1.5">
-            <StatusBadge status={c.status} className="shrink-0" />
-            <span>
-              <span className="font-medium">{CHECK_LABELS[c.kind]}</span> · {c.target}: <span className="text-muted-foreground">{c.detail}</span>
-            </span>
+          <li key={i} className="space-y-1 px-3 py-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 font-medium" title={CHECK_HINTS[c.kind]}>
+                {CHECK_LABELS[c.kind]}
+              </span>
+              <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground">{c.target}</span>
+              <StatusBadge status={c.status} className="ml-auto" />
+            </div>
+            {c.kind === 'provenance' && c.detail.includes(' ← ') ? (
+              // "amount ← Downloads/x.pdf; due date ← …" reads better as one line per field.
+              <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+                {c.detail.split('; ').map((pair) => {
+                  const [field, source] = pair.split(' ← ')
+                  return (
+                    <div key={pair} className="contents">
+                      <dt className="text-muted-foreground">{field}</dt>
+                      <dd className="min-w-0 truncate font-mono text-2xs leading-4.5" title={source}>
+                        {source}
+                      </dd>
+                    </div>
+                  )
+                })}
+              </dl>
+            ) : (
+              <p className="wrap-break-word text-muted-foreground">{c.detail}</p>
+            )}
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   )
 }
-
-const CHECK_LABELS = { write: 'Write', provenance: 'Provenance', outcome: 'Ground truth (sandbox)', item: 'Item' } as const
 
 function WorkItems({ items }: { items: WorkItem[] }) {
   const done = items.filter((i) => i.status !== 'pending').length
   return (
-    <div className="shrink-0 border-b px-3 py-2">
-      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-        <ListChecks className="size-3.5" /> Work items
-        <span className="ml-auto font-normal normal-case">
-          {done}/{items.length} resolved
+    <div className="shrink-0 space-y-3 border-b px-4 py-3">
+      <div className="flex items-center gap-2">
+        <ListChecks className="size-4 text-muted-foreground" />
+        <span className="label-caps">Work items</span>
+        <span className="ml-auto text-2xs text-muted-foreground tabular-nums">
+          {done} of {items.length} resolved
         </span>
       </div>
-      <div className="mt-1.5 h-1 overflow-hidden rounded bg-muted">
-        <div className="h-full bg-primary transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
+      <div className="h-1 overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${(done / items.length) * 100}%` }} />
       </div>
-      <ul className="mt-2 space-y-1 text-[12px]">
+      <ul className="space-y-1 text-xs">
         {items.map((i) => (
-          <li key={i.key} className="flex items-start gap-1.5">
+          <li key={i.key} className="flex items-center gap-2">
             {i.status === 'done' ? (
-              <Check className="mt-0.5 size-3.5 shrink-0 text-success" />
+              <Check className="size-3.5 shrink-0 text-success" />
             ) : i.status === 'skipped' ? (
-              <X className="mt-0.5 size-3.5 shrink-0 text-warning" />
+              <X className="size-3.5 shrink-0 text-warning" />
             ) : (
-              <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <Circle className="size-3.5 shrink-0 text-muted-foreground" />
             )}
             <span className="font-mono">{i.key}</span>
             <span className="min-w-0 truncate text-muted-foreground" title={i.reason ?? i.description}>
@@ -224,21 +296,12 @@ function WorkItems({ items }: { items: WorkItem[] }) {
   )
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <span className="text-muted-foreground">{label}: </span>
-      {value}
-    </div>
-  )
-}
-
 function Json({ label, value }: { label: string; value: unknown }) {
-  const text = typeof value === 'object' && value !== null && 'snapshot' in value ? { ...(value as object), snapshot: '(page snapshot, see Workspace)' } : value
+  const text = typeof value === 'object' && value !== null && 'snapshot' in value ? { ...(value as object), snapshot: '(page snapshot, shown in the Workspace)' } : value
   return (
-    <div>
-      <div className="text-muted-foreground">{label}</div>
-      <pre className="mt-0.5 max-h-48 overflow-auto rounded bg-muted p-1.5 font-mono text-[10.5px] whitespace-pre-wrap">{JSON.stringify(text, null, 2)}</pre>
+    <div className="space-y-1">
+      <div className="label-caps">{label}</div>
+      <pre className="max-h-48 overflow-auto rounded-md bg-secondary p-2 font-mono text-2xs leading-4 whitespace-pre-wrap">{JSON.stringify(text, null, 2)}</pre>
     </div>
   )
 }
@@ -248,6 +311,6 @@ function summarizeInput(input: unknown): string {
   return Object.entries(input as Record<string, unknown>)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
-    .join(', ')
+    .join(' · ')
     .slice(0, 120)
 }

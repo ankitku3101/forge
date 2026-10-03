@@ -1,5 +1,5 @@
-import { Eye, FileText, Globe, Inbox, Landmark, Paperclip, Pencil, Save, X } from 'lucide-react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { FileText, Globe, Inbox, Landmark, MousePointerClick, Paperclip, Pencil, Save, X } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { FileContent, FinanceRecord, FocusTarget, RecordStatus } from '@shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,11 +22,15 @@ interface Props {
 export function Workspace({ view, pulse, following, readOnly, hidePortal }: Props) {
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-4">
+      <div className="flex h-11 shrink-0 items-center gap-3 border-b bg-card px-4">
         <ViewTitle view={view} />
         {following && (
-          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-primary">
-            <Eye className="size-3.5" /> Following the worker
+          <span className="ml-auto flex shrink-0 items-center gap-2 text-xs font-medium text-primary">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-40 motion-reduce:hidden" />
+              <span className="relative inline-flex size-2 rounded-full bg-primary" />
+            </span>
+            Following the worker
           </span>
         )}
       </div>
@@ -44,20 +48,21 @@ export function Workspace({ view, pulse, following, readOnly, hidePortal }: Prop
 }
 
 function ViewTitle({ view }: { view: FocusTarget }) {
-  const [Icon, text] =
+  const [Icon, kind, detail] =
     view.kind === 'file'
-      ? [FileText, view.path]
+      ? [FileText, 'File', view.path]
       : view.kind === 'mail'
-        ? [Inbox, 'Mail']
+        ? [Inbox, 'Mail', null]
         : view.kind === 'record' || view.kind === 'records'
-          ? [Landmark, 'Finance ledger']
+          ? [Landmark, 'Finance', 'Ledger']
           : view.kind === 'portal'
-            ? [Globe, 'Arcus Vendor Portal (live)']
-            : [Eye, 'Workspace']
+            ? [Globe, 'Portal', 'Live page']
+            : [MousePointerClick, 'Workspace', null]
   return (
-    <div className="flex min-w-0 items-center gap-2 font-medium">
+    <div className="flex min-w-0 items-center gap-2">
       <Icon className="size-4 shrink-0 text-muted-foreground" />
-      <span className="truncate">{text}</span>
+      <span className="label-caps">{kind}</span>
+      {detail && <span className="truncate font-mono text-xs text-foreground">{detail}</span>}
     </div>
   )
 }
@@ -65,12 +70,18 @@ function ViewTitle({ view }: { view: FocusTarget }) {
 function EmptyWorkspace() {
   return (
     <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-sm text-center text-muted-foreground">
-        <p className="text-sm text-foreground">Nothing open yet</p>
-        <p className="mt-1">Pick a file, email or record on the left, or give the worker a task. Whatever it touches will appear here.</p>
+      <div className="max-w-xs space-y-2 text-center">
+        <MousePointerClick className="mx-auto size-6 text-muted-foreground" />
+        <p className="text-base font-semibold">Nothing open yet</p>
+        <p className="text-muted-foreground">Open a file, email or record on the left, or give the worker a task. Whatever it touches appears here.</p>
       </div>
     </div>
   )
+}
+
+/** Thin toolbar under the workspace header, shared by every document view. */
+function Toolbar({ children }: { children: ReactNode }) {
+  return <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-card px-4">{children}</div>
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -88,27 +99,37 @@ function FileView({ path, readOnly }: { path: string; readOnly: boolean }) {
   }, [data])
   useEffect(() => () => void (pdfUrl && URL.revokeObjectURL(pdfUrl)), [pdfUrl])
 
-  if (error) return <p className="p-4 text-destructive">{error}</p>
+  if (error) return <p className="p-6 text-destructive">{error}</p>
   if (!data) return null
 
-  if (data.kind === 'binary') return <p className="p-4 text-muted-foreground">Binary file ({data.size} bytes).</p>
+  if (data.kind === 'binary') return <p className="p-6 text-muted-foreground">Binary file ({data.size} bytes). It can't be previewed.</p>
 
   if (data.kind === 'pdf') {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex gap-1 border-b px-3 py-1.5">
-          <Button size="sm" variant={mode === 'doc' ? 'secondary' : 'ghost'} onClick={() => setMode('doc')}>
-            Document
-          </Button>
-          <Button size="sm" variant={mode === 'text' ? 'secondary' : 'ghost'} onClick={() => setMode('text')}>
-            Extracted text (what the worker reads)
-          </Button>
-        </div>
+        <Toolbar>
+          <div className="flex rounded-md bg-secondary p-1">
+            {(
+              [
+                ['doc', 'Document'],
+                ['text', 'What the worker reads'],
+              ] as const
+            ).map(([m, label]) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn('h-7 rounded-sm px-3 text-xs font-medium text-muted-foreground transition-colors', mode === m && 'bg-card text-foreground shadow-xs')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </Toolbar>
         {mode === 'doc' && pdfUrl ? (
           <iframe title={path} src={pdfUrl} className="min-h-0 w-full flex-1 bg-white" />
         ) : (
           <ScrollArea className="min-h-0 flex-1">
-            <pre className="p-4 font-mono text-[12px] whitespace-pre-wrap">{data.text}</pre>
+            <pre className="mx-auto max-w-3xl px-8 py-6 font-mono text-xs leading-6 whitespace-pre-wrap">{data.text}</pre>
           </ScrollArea>
         )}
       </div>
@@ -118,9 +139,9 @@ function FileView({ path, readOnly }: { path: string; readOnly: boolean }) {
   const editing = draft !== null
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5">
+      <Toolbar>
         {!editing ? (
-          <Button size="sm" variant="ghost" disabled={readOnly} onClick={() => setDraft(data.text)}>
+          <Button size="sm" variant="outline" disabled={readOnly} onClick={() => setDraft(data.text)} title={readOnly ? 'Read-only while the worker runs' : undefined}>
             <Pencil /> Edit
           </Button>
         ) : (
@@ -138,19 +159,23 @@ function FileView({ path, readOnly }: { path: string; readOnly: boolean }) {
                 }
               }}
             >
-              <Save /> Save
+              <Save /> {saving ? 'Saving…' : 'Save'}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
-              <X /> Cancel
+              Cancel
             </Button>
           </>
         )}
-      </div>
+      </Toolbar>
       {editing ? (
-        <Textarea className="min-h-0 flex-1 resize-none rounded-none border-0 font-mono text-[12px] focus-visible:ring-0" value={draft} onChange={(e) => setDraft(e.target.value)} />
+        <Textarea
+          className="min-h-0 flex-1 resize-none rounded-none border-0 px-8 py-6 font-mono text-xs leading-6 shadow-none focus-visible:ring-0"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
       ) : (
         <ScrollArea className="min-h-0 flex-1">
-          <pre className="p-4 font-mono text-[12px] leading-relaxed whitespace-pre-wrap">{data.text}</pre>
+          <pre className="mx-auto max-w-3xl px-8 py-6 font-mono text-xs leading-6 whitespace-pre-wrap">{data.text}</pre>
         </ScrollArea>
       )}
     </div>
@@ -159,26 +184,29 @@ function FileView({ path, readOnly }: { path: string; readOnly: boolean }) {
 
 function MailView({ id }: { id: number }) {
   const { data, error } = useSandboxData('mail', () => api.invoke('mail:get', { id }), [id])
-  if (error) return <p className="p-4 text-destructive">{error}</p>
+  if (error) return <p className="p-6 text-destructive">{error}</p>
   if (!data) return null
   return (
     <ScrollArea className="h-full">
-      <article className="mx-auto max-w-2xl p-6">
-        <h2 className="text-lg font-semibold">{data.subject}</h2>
-        <div className="mt-2 flex flex-wrap gap-x-4 text-muted-foreground">
-          <span>
-            From <span className="text-foreground">{data.fromName}</span> &lt;{data.fromAddress}&gt;
-          </span>
-          <span>To {data.toAddress}</span>
-          <span>{formatDate(data.receivedAt)}</span>
-        </div>
-        <div className="mt-5 text-[13.5px] leading-relaxed whitespace-pre-wrap">{data.body}</div>
+      <article className="mx-auto max-w-2xl px-8 py-8">
+        <h1 className="text-xl font-semibold tracking-tight">{data.subject}</h1>
+        <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+          <dt className="text-muted-foreground">From</dt>
+          <dd>
+            <span className="font-medium">{data.fromName}</span> <span className="font-mono text-muted-foreground">{data.fromAddress}</span>
+          </dd>
+          <dt className="text-muted-foreground">To</dt>
+          <dd className="font-mono">{data.toAddress}</dd>
+          <dt className="text-muted-foreground">Received</dt>
+          <dd>{formatDate(data.receivedAt)}</dd>
+        </dl>
+        <div className="mt-6 border-t pt-6 leading-6 whitespace-pre-wrap">{data.body}</div>
         {data.attachments.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2">
             {data.attachments.map((a) => (
-              <span key={a.id} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1">
+              <span key={a.id} className="inline-flex h-8 items-center gap-2 rounded-md border bg-card px-3 text-xs">
                 <Paperclip className="size-3.5 text-muted-foreground" />
-                {a.filename}
+                <span className="font-mono">{a.filename}</span>
                 <span className="text-muted-foreground">{Math.ceil(a.size / 1024)} KB</span>
               </span>
             ))}
@@ -190,6 +218,9 @@ function MailView({ id }: { id: number }) {
 }
 
 // ---------------------------------------------------------------------------------------------
+
+const TH = 'h-10 px-3 text-left align-middle whitespace-nowrap label-caps'
+const TD = 'h-12 px-3 align-middle whitespace-nowrap'
 
 function RecordsView({ selectedId, changed, pulse, readOnly }: { selectedId: number | null; changed?: string[]; pulse: number; readOnly: boolean }) {
   const { data } = useSandboxData('finance', () => api.invoke('finance:list'))
@@ -204,17 +235,17 @@ function RecordsView({ selectedId, changed, pulse, readOnly }: { selectedId: num
   const flashAll = changed?.includes('*')
   return (
     <ScrollArea className="h-full">
-      <table className="w-full text-left">
-        <thead className="sticky top-0 bg-background text-[11px] tracking-wide text-muted-foreground uppercase">
+      <table className="w-full border-collapse">
+        <thead className="sticky top-0 z-10 bg-background">
           <tr className="border-b">
-            <th className="px-4 py-2 font-medium">Vendor</th>
-            <th className="px-2 py-2 font-medium">Invoice no.</th>
-            <th className="px-2 py-2 text-right font-medium">Amount</th>
-            <th className="px-2 py-2 font-medium">Issued</th>
-            <th className="px-2 py-2 font-medium">Due</th>
-            <th className="px-2 py-2 font-medium">Status</th>
-            <th className="px-2 py-2 font-medium">Notes</th>
-            <th className="w-10" />
+            <th className={cn(TH, 'pl-4')}>Vendor</th>
+            <th className={TH}>Invoice</th>
+            <th className={cn(TH, 'text-right')}>Amount</th>
+            <th className={TH}>Issued</th>
+            <th className={TH}>Due</th>
+            <th className={TH}>Status</th>
+            <th className={TH}>Notes</th>
+            <th className="w-12" />
           </tr>
         </thead>
         <tbody>
@@ -224,22 +255,28 @@ function RecordsView({ selectedId, changed, pulse, readOnly }: { selectedId: num
             return editing === r.id ? (
               <EditRow key={r.id} record={r} onDone={() => setEditing(null)} />
             ) : (
-              <tr key={r.id} ref={selected ? selectedRef : undefined} className={cn('border-b', selected && 'bg-accent/60', flashAll && selected && 'flash')}>
-                <td className="px-4 py-2 font-medium">{r.vendorName}</td>
-                <td className="px-2 py-2 font-mono text-[12px]">{r.invoiceNumber}</td>
-                <Cell flashKey={flash('amount')} className="text-right font-mono tabular-nums">
+              <tr
+                key={r.id}
+                ref={selected ? selectedRef : undefined}
+                className={cn('border-b transition-colors hover:bg-accent/40', selected && 'bg-accent hover:bg-accent', flashAll && selected && 'flash')}
+              >
+                <td className={cn(TD, 'pl-4 font-medium')}>{r.vendorName}</td>
+                <td className={cn(TD, 'font-mono text-xs')}>{r.invoiceNumber}</td>
+                <Cell flashKey={flash('amount')} className="text-right font-mono text-xs">
                   {formatMoney(r.amount, r.currency)}
                 </Cell>
-                <td className="px-2 py-2 text-muted-foreground">{r.issueDate ?? '—'}</td>
-                <Cell flashKey={flash('dueDate')}>{r.dueDate ?? <span className="text-warning">none</span>}</Cell>
+                <td className={cn(TD, 'font-mono text-xs text-muted-foreground')}>{r.issueDate ?? '—'}</td>
+                <Cell flashKey={flash('dueDate')} className="font-mono text-xs">
+                  {r.dueDate ?? <span className="font-sans text-warning">Not set</span>}
+                </Cell>
                 <Cell flashKey={flash('status')}>
                   <StatusBadge status={r.status} />
                 </Cell>
-                <Cell flashKey={flash('notes')} className="max-w-[220px] truncate text-muted-foreground">
-                  {r.notes}
+                <Cell flashKey={flash('notes')} className="w-full max-w-0 truncate text-xs text-muted-foreground">
+                  <span title={r.notes}>{r.notes}</span>
                 </Cell>
-                <td className="px-2">
-                  <Button size="icon" variant="ghost" className="size-7" disabled={readOnly} title="Edit record" onClick={() => setEditing(r.id)}>
+                <td className="pr-3 text-right">
+                  <Button size="icon" variant="ghost" className="size-8" disabled={readOnly} title={readOnly ? 'Read-only while the worker runs' : 'Edit record'} onClick={() => setEditing(r.id)}>
                     <Pencil className="size-3.5" />
                   </Button>
                 </td>
@@ -253,9 +290,9 @@ function RecordsView({ selectedId, changed, pulse, readOnly }: { selectedId: num
 }
 
 /** A table cell that briefly highlights when the worker changes it. Remounts on each pulse to replay. */
-function Cell({ flashKey, className, children }: { flashKey: string; className?: string; children: React.ReactNode }) {
+function Cell({ flashKey, className, children }: { flashKey: string; className?: string; children: ReactNode }) {
   return (
-    <td key={flashKey} className={cn('px-2 py-2', flashKey && 'flash', className)}>
+    <td key={flashKey} className={cn(TD, flashKey && 'flash', className)}>
       {children}
     </td>
   )
@@ -269,8 +306,8 @@ function EditRow({ record, onDone }: { record: FinanceRecord; onDone: () => void
   const [err, setErr] = useState<string | null>(null)
   const save = async () => {
     const n = Number(amount)
-    if (!Number.isFinite(n) || n < 0) return setErr('Invalid amount')
-    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return setErr('Due date must be YYYY-MM-DD')
+    if (!Number.isFinite(n) || n < 0) return setErr('Enter a valid amount.')
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return setErr('Use YYYY-MM-DD for the due date.')
     try {
       await api.invoke('finance:update', { id: record.id, patch: { amount: n, dueDate: dueDate || null, status, notes } })
       onDone()
@@ -279,33 +316,38 @@ function EditRow({ record, onDone }: { record: FinanceRecord; onDone: () => void
     }
   }
   return (
-    <tr className="border-b bg-muted/50">
-      <td className="px-4 py-2 font-medium">{record.vendorName}</td>
-      <td className="px-2 py-2 font-mono text-[12px]">{record.invoiceNumber}</td>
-      <td className="px-2 py-1">
-        <Input className="h-7 text-right font-mono" value={amount} onChange={(e) => setAmount(e.target.value)} />
+    <tr className="border-b bg-secondary">
+      <td className={cn(TD, 'pl-4 font-medium')}>{record.vendorName}</td>
+      <td className={cn(TD, 'font-mono text-xs')}>{record.invoiceNumber}</td>
+      <td className={TD}>
+        <Input className="h-8 text-right font-mono text-xs" aria-label="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </td>
-      <td className="px-2 py-2 text-muted-foreground">{record.issueDate ?? '—'}</td>
-      <td className="px-2 py-1">
-        <Input className="h-7 w-28" placeholder="YYYY-MM-DD" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+      <td className={cn(TD, 'font-mono text-xs text-muted-foreground')}>{record.issueDate ?? '—'}</td>
+      <td className={TD}>
+        <Input className="h-8 w-32 font-mono text-xs" aria-label="Due date" placeholder="YYYY-MM-DD" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
       </td>
-      <td className="px-2 py-1">
-        <select className="h-7 rounded-md border bg-background px-1" value={status} onChange={(e) => setStatus(e.target.value as RecordStatus)}>
-          <option value="unpaid">unpaid</option>
-          <option value="paid">paid</option>
-          <option value="overdue">overdue</option>
+      <td className={TD}>
+        <select
+          aria-label="Status"
+          className="h-8 rounded-md border border-input bg-card px-2 text-xs"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as RecordStatus)}
+        >
+          <option value="unpaid">Unpaid</option>
+          <option value="paid">Paid</option>
+          <option value="overdue">Overdue</option>
         </select>
       </td>
-      <td className="px-2 py-1">
-        <Input className="h-7" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        {err && <div className="mt-1 text-[11px] text-destructive">{err}</div>}
+      <td className={TD}>
+        <Input className="h-8 text-xs" aria-label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        {err && <div className="mt-1 text-2xs text-destructive">{err}</div>}
       </td>
-      <td className="px-2">
-        <div className="flex gap-1">
-          <Button size="icon" className="size-7" title="Save" onClick={save}>
+      <td className="pr-3">
+        <div className="flex justify-end gap-1">
+          <Button size="icon" className="size-8" title="Save" onClick={save}>
             <Save className="size-3.5" />
           </Button>
-          <Button size="icon" variant="ghost" className="size-7" title="Cancel" onClick={onDone}>
+          <Button size="icon" variant="ghost" className="size-8" title="Cancel" onClick={onDone}>
             <X className="size-3.5" />
           </Button>
         </div>
@@ -337,8 +379,8 @@ function PortalSlot({ hidden }: { hidden: boolean }) {
     }
   }, [hidden])
   return (
-    <div ref={ref} className="flex h-full items-center justify-center bg-muted/40 text-muted-foreground">
-      {hidden && 'Portal view hidden while a dialog is open'}
+    <div ref={ref} className="flex h-full items-center justify-center bg-secondary text-muted-foreground">
+      {hidden && 'The live page is hidden while a dialog is open.'}
     </div>
   )
 }

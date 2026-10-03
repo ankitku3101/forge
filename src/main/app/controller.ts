@@ -116,8 +116,12 @@ export class AppController {
     return this.state()
   }
 
+  /** Rebuilds the sandbox and clears run history. API keys in Settings are kept. */
   async reset(): Promise<AppState> {
-    await this.assertIdle('reset the sandbox')
+    await this.assertIdle('reset')
+    await this.store.clearAll()
+    this.events.forgetAll()
+    this.interruptedRunId = null
     await this.resetTo(this.scenario)
     return this.state()
   }

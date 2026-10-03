@@ -400,6 +400,16 @@ describe('agent runtime', () => {
     expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(0)
   })
 
+  it('clears all run history for Reset', async () => {
+    const h = await setup('happy_path', [{ tool: 'finish', args: { summary: 'ok' } }])
+    const runId = await h.runtime.settle(await h.runtime.start('anything')).then((i) => i.id)
+    expect(await h.events.list(runId)).not.toHaveLength(0)
+    await h.store.clearAll()
+    h.events.forgetAll()
+    expect(await h.store.list()).toHaveLength(0)
+    expect(await h.events.list(runId)).toHaveLength(0)
+  })
+
   it('enforces the step limit', async () => {
     const h = await setup('happy_path', Array.from({ length: 40 }, (_, i) => ({ tool: 'remember', args: { fact: `fact ${i}` } })))
     const info = await h.runtime.settle(await h.runtime.start('loop forever'))

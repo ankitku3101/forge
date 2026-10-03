@@ -1,0 +1,10 @@
+[
+  {
+    "date": "2026-10-04",
+    "scope": "app",
+    "macrostructure": "Workbench (app shell)",
+    "theme": "Cobalt-derived instrument panel (cool paper, cobalt accent, Geist + Geist Mono)",
+    "enrichment": "none",
+    "brief": "Autonomous AI Worker desktop app: fix type scale, fonts, spacing, colour contrast across all panels"
+  }
+]
