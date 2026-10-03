@@ -11,7 +11,7 @@ import type { ToolRegistry } from '../tools/registry'
 import { ToolFailure, type ToolContext, type ToolDefinition } from '../tools/types'
 import type { finishInput } from '../tools/worker'
 import type { EventLog } from './events'
-import { decide } from './policy'
+import { decide, loadPolicy } from './policy'
 import { systemPrompt } from './prompts/system'
 import { toInfo, type RunState, type RunStore } from './store'
 import { verify } from './verification'
@@ -123,7 +123,8 @@ export class AgentRuntime {
           ? await this.execute(run, tool, call.id, input)
           : fail('PERMISSION_DENIED', `The user rejected this action${response.kind === 'approval' && response.note ? `: ${response.note}` : '.'}`)
     } else if (tool.kind === 'interactive') {
-      obs = await this.guard(() => tool.complete(input, response, this.ctx(run)))
+      const ctx = await this.ctx(run)
+      obs = await this.guard(() => tool.complete(input, response, ctx))
     } else {
       throw new Error('Pending request does not match the tool type.')
     }
@@ -245,35 +246,41 @@ export class AgentRuntime {
     }
     const input = parsed.data
 
-    const decision = decide(tool)
-    if (decision === 'deny') {
-      await this.observe(run, call, tool, input, fail('PERMISSION_DENIED', `${tool.name} is disabled by policy.`))
-      return
-    }
-
     if (tool.kind === 'terminal') {
       await this.finish(run, call, tool, input)
       return
     }
 
     await this.focus(run, tool.focus?.(input))
+    const ctx = await this.ctx(run)
+
+    // Prechecks run before the policy decision, so the user is never asked to approve a doomed action.
+    const pre = await this.guard(async () => {
+      await tool.precheck?.(input, ctx)
+      return tool.approvalAmount ? await tool.approvalAmount(input, ctx) : null
+    })
+    if (!pre.ok) {
+      await this.observe(run, call, tool, input, pre)
+      return
+    }
+
+    const { decision, reason } = decide(tool, pre.data, ctx.policy)
+    if (decision !== 'auto' || tool.risk === 'financial' || ctx.policy.warning) {
+      await this.deps.events.emit(run.id, { type: 'policy_decision', toolCallId: call.id, decision, reason, warning: ctx.policy.warning })
+    }
+    if (decision === 'deny') {
+      await this.observe(run, call, tool, input, fail('PERMISSION_DENIED', `${tool.name} is not allowed: ${reason}`))
+      return
+    }
 
     if (decision === 'approval') {
-      const pre = await this.guard(async () => {
-        await tool.precheck?.(input, this.ctx(run))
-        return null
-      })
-      if (!pre.ok) {
-        await this.observe(run, call, tool, input, pre)
-        return
-      }
       const summary = tool.approval?.(input) ?? { title: `Run ${tool.name}`, details: input as Record<string, unknown> }
-      await this.pause(run, { kind: 'approval', toolCallId: call.id, tool: tool.name, ...summary })
+      await this.pause(run, { kind: 'approval', toolCallId: call.id, tool: tool.name, ...summary, details: { ...summary.details, Policy: reason } })
       return
     }
 
     if (tool.kind === 'interactive') {
-      const draft = await this.guard(() => tool.request(input, this.ctx(run)))
+      const draft = await this.guard(() => tool.request(input, ctx))
       if (!draft.ok) {
         await this.observe(run, call, tool, input, draft)
         return
@@ -292,8 +299,9 @@ export class AgentRuntime {
     if (tool.kind !== 'action') return fail('VALIDATION', `${tool.name} cannot be executed directly.`)
     const attempts = tool.retry === 'transient' ? 3 : 1
     let last: Observation = fail('TRANSIENT', 'Not attempted.')
+    const ctx = await this.ctx(run)
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      last = await this.guard(() => tool.execute(input, this.ctx(run)))
+      last = await this.guard(() => tool.execute(input, ctx))
       if (last.ok || last.error.code !== 'TRANSIENT' || attempt === attempts) break
       await this.deps.events.emit(run.id, { type: 'tool_retry', toolCallId, tool: tool.name, attempt: attempt + 1, code: last.error.code, message: last.error.message })
       await this.sleep(400 * 2 ** (attempt - 1))
@@ -424,9 +432,10 @@ export class AgentRuntime {
     return run
   }
 
-  private ctx(run: RunState): ToolContext {
+  private async ctx(run: RunState): Promise<ToolContext> {
     const env = this.deps.env()
     return {
+      policy: await loadPolicy(env.filesDir),
       db: env.db,
       filesDir: env.filesDir,
       faults: env.faults,

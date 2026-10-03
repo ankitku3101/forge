@@ -67,6 +67,7 @@ export type RunEventPayload =
   | { type: 'tool_retry'; toolCallId: string; tool: string; attempt: number; code: ToolErrorCode; message: string }
   | { type: 'tool_succeeded'; toolCallId: string; tool: string; output: unknown; durationMs: number }
   | { type: 'tool_failed'; toolCallId: string; tool: string; code: ToolErrorCode; message: string; durationMs: number }
+  | { type: 'policy_decision'; toolCallId: string; decision: 'auto' | 'approval' | 'deny'; reason: string; warning: string | null }
   | { type: 'focus_changed'; focus: FocusTarget }
   | { type: 'approval_requested'; request: PendingRequest }
   | { type: 'input_requested'; request: PendingRequest }

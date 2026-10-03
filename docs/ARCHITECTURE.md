@@ -17,7 +17,9 @@ observe → decide (LLM tool call) → validate (Zod) → policy check → execu
 **Limits:** 30 steps; abort after 3 identical failing calls.
 
 ## Policy engine
-read → auto · write → auto · financial → approval · destructive → disabled.
+read → auto · write → auto · financial → approval at or above the threshold · destructive → disabled.
+
+Business rules live in the sandbox, not in code: a fenced `policy` block in `Files/Policies/approval-policy.md` sets `approval_threshold`, `missing_due_date` and `remit_account_mismatch`. It is re-read at every decision, so editing the document changes behavior immediately. A missing or invalid block falls back to the strictest defaults (everything needs approval) with a warning in Activity. Code keeps the invariants no document can loosen: destructive tools stay disabled and secrets never reach the model. Every financial decision emits a `policy_decision` event citing its source.
 
 ## Verification (code, not the model)
 1. **Write check:** re-read the record, compare with submitted values.

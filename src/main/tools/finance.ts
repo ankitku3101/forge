@@ -1,9 +1,20 @@
 import { z } from 'zod'
 import { assertNotDuplicate, createRecord, getRecord, resolveVendor, searchRecords, updateRecord } from '../apps/finance'
 import { formatMoney } from '../sandbox/pdf'
-import { action } from './types'
+import type { LoadedPolicy } from '../agent/policy'
+import { action, ToolFailure } from './types'
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
+/** Applies the document policy's `missing_due_date` rule. */
+function checkMissingDueDate({ policy, source }: LoadedPolicy, notes: string): void {
+  if (policy.missing_due_date === 'block') {
+    throw new ToolFailure('PERMISSION_DENIED', `Policy (${source}) does not allow saving an invoice without a due date. Ask the user how to proceed.`)
+  }
+  if (policy.missing_due_date === 'note' && notes.trim().length < 5) {
+    throw new ToolFailure('VALIDATION', `Policy (${source}) requires a note explaining the missing due date.`)
+  }
+}
+
+const isoDate =z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
 const status = z.enum(['unpaid', 'paid', 'overdue'])
 const money = z.number().nonnegative().multipleOf(0.01, 'Use at most two decimals')
 
@@ -72,8 +83,10 @@ export const financeTools = [
         ...(i.notes ? { Notes: i.notes } : {}),
       },
     }),
+    approvalAmount: async (i) => i.amount,
     async precheck(i, ctx) {
       await assertNotDuplicate(ctx.db, i.vendor, i.invoiceNumber)
+      if (i.dueDate === null) checkMissingDueDate(ctx.policy, i.notes)
     },
     async execute(i, ctx) {
       const rec = await createRecord(ctx.db, ctx.faults, i)
@@ -110,8 +123,10 @@ export const financeTools = [
         Object.entries(patch).map(([k, v]) => [k, k === 'amount' && typeof v === 'number' ? formatMoney(Math.round(v * 100)) : (v ?? 'none')]),
       ),
     }),
-    async precheck({ id }, ctx) {
-      await getRecord(ctx.db, id)
+    approvalAmount: async (i, ctx) => i.amount ?? (await getRecord(ctx.db, i.id)).amount,
+    async precheck(i, ctx) {
+      const rec = await getRecord(ctx.db, i.id)
+      if (i.dueDate === null && rec.dueDate !== null) checkMissingDueDate(ctx.policy, i.notes ?? rec.notes)
     },
     async execute({ id, ...patch }, ctx) {
       const rec = await updateRecord(ctx.db, ctx.faults, id, patch)

@@ -134,7 +134,7 @@
   "files": [
     {
       "path": "Policies/approval-policy.md",
-      "content": "# Arcus AP approval policy\n\n- Every new Finance record or change to an amount needs approval from the finance lead before it is saved.\n- Record the invoice number exactly as printed on the invoice.\n- Amounts are recorded in the invoice currency, to the cent.\n- If an invoice is missing a due date, do not guess. Ask the finance lead or note it on the record.\n- Never create a second record for an invoice that is already in Finance.\n"
+      "content": "# Arcus AP approval policy\n\n- Finance records of $500.00 or more need approval from the finance lead before they are saved. Smaller ones can be saved directly.\n- Record the invoice number exactly as printed on the invoice.\n- Amounts are recorded in the invoice currency, to the cent.\n- If an invoice is missing a due date, do not guess. Ask the finance lead, or save it with a note explaining the missing date.\n- If the remit-to bank account on an invoice differs from the vendor's account on file, do not record it. Escalate to the finance lead: this is a common fraud pattern.\n- Never create a second record for an invoice that is already in Finance.\n\nThe block below is read by the AI worker's policy engine. Keep it in sync with the rules above.\n\n```policy\napproval_threshold: 500        # USD; at or above needs approval\nmissing_due_date: note         # block | note | allow\nremit_account_mismatch: block  # block | approve | allow\n```\n"
     },
     {
       "path": "Policies/vendors.md",

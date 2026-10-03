@@ -5,6 +5,7 @@ import type { Db } from '../db/client'
 import type { WriteLogEntry } from '../db/schema'
 import type { Faults } from '../sandbox/faults'
 import type { BrowserDriver } from '../browser/driver'
+import type { LoadedPolicy } from '../agent/policy'
 
 /** A typed, expected tool failure. Returned to the model as an observation, never surfaced as a crash. */
 export class ToolFailure extends Error {
@@ -27,6 +28,8 @@ export interface ToolContext {
   scenario: ScenarioId
   facts: string[]
   writes: WriteLogEntry[]
+  /** Company policy as loaded from the sandbox's policy document for this step. */
+  policy: LoadedPolicy
   /** Notifies the UI that the sandbox changed so it can refresh. */
   sandboxChanged(area: 'files' | 'mail' | 'finance'): void
 }
@@ -51,7 +54,12 @@ interface ToolBase<I extends z.ZodType, O> {
   focus?: (input: z.output<I>, output?: O) => FocusTarget
   /** Short human summary for the approval card (financial tools). */
   approval?: (input: z.output<I>) => { title: string; details: Record<string, unknown> }
-  /** Optional pre-check before asking for approval, so the user isn't asked to approve an impossible action. */
+  /** Amount at stake, compared with the policy's approval threshold (financial tools). */
+  approvalAmount?: (input: z.output<I>, ctx: ToolContext) => Promise<number | null>
+  /**
+   * Runs before the policy decision: rejects impossible or policy-violating actions early, so the
+   * user is never asked to approve something that would fail.
+   */
   precheck?: (input: z.output<I>, ctx: ToolContext) => Promise<void>
 }
 

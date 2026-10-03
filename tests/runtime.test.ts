@@ -1,3 +1,5 @@
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AgentRuntime } from '../src/main/agent/runtime'
 import { EventLog } from '../src/main/agent/events'
@@ -229,6 +231,43 @@ describe('agent runtime', () => {
     const restarted = h.make()
     await restarted.respond(runId, { kind: 'answer', text: 'Acme Supplies' })
     expect((await restarted.settle(runId)).status).toBe('completed')
+  })
+
+  it('takes approval rules from the policy document, including live edits', async () => {
+    const small = { vendor: 'Norvale Office', invoiceNumber: 'NO-5541', amount: 120, issueDate: '2026-10-01', dueDate: '2026-10-31', status: 'unpaid' }
+    const h = await setup('happy_path', [
+      { tool: 'create_record', args: small },
+      (m) => {
+        expect(lastObservation(m).ok).toBe(true) // below the $500 threshold: no approval
+        return { tool: 'create_record', args: ACM }
+      },
+      { tool: 'finish', args: { summary: 'done' } },
+    ])
+    // The user raises the threshold in the policy document; the next decision follows it.
+    const policyPath = join(h.sb.filesDir, 'Policies/approval-policy.md')
+    await writeFile(policyPath, (await readFile(policyPath, 'utf8')).replace('approval_threshold: 500', 'approval_threshold: 10000'))
+    const runId = await h.runtime.start('Add invoices')
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('completed')
+    const decisions = (await h.events.list(runId)).filter((e) => e.type === 'policy_decision')
+    expect(decisions.map((d) => (d.type === 'policy_decision' ? d.decision : null))).toEqual(['auto', 'auto'])
+    expect(decisions[1]).toMatchObject({ reason: expect.stringContaining('$10,000.00') })
+  })
+
+  it('applies the missing-due-date rule from the policy document before asking for approval', async () => {
+    const noDue = { ...ACM, dueDate: null }
+    const h = await setup('missing_info', [
+      { tool: 'create_record', args: noDue },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('note') })
+        return { tool: 'create_record', args: { ...noDue, notes: 'Invoice PDF has no due date; confirm with vendor.' } }
+      },
+      { tool: 'finish', args: { summary: 'done' } },
+    ])
+    const runId = await h.runtime.start('Add ACM-1058')
+    expect((await h.runtime.settle(runId)).pending?.kind).toBe('approval')
+    await h.runtime.respond(runId, { kind: 'approval', approved: true })
+    expect((await h.runtime.settle(runId)).status).toBe('completed')
   })
 
   it('enforces the step limit', async () => {

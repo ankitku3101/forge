@@ -26,6 +26,7 @@ export type ActivityItem =
       error?: { code: ToolErrorCode; message: string }
       retries: { attempt: number; message: string }[]
       waitingFor?: PendingRequest['kind']
+      policy?: { decision: 'auto' | 'approval' | 'deny'; reason: string; warning: string | null }
       response?: string
       durationMs?: number
       at: string
@@ -70,6 +71,11 @@ export function deriveViews(events: RunEvent[]) {
         const item = { kind: 'step' as const, id: e.toolCallId, step: e.step, tool: e.tool, input: e.input, risk: e.risk, model, status: 'running' as StepStatus, retries: [], at: e.at }
         steps.set(e.toolCallId, item)
         activity.push(item)
+        break
+      }
+      case 'policy_decision': {
+        const s = steps.get(e.toolCallId)
+        if (s) s.policy = { decision: e.decision, reason: e.reason, warning: e.warning }
         break
       }
       case 'tool_retry':

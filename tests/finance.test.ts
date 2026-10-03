@@ -3,7 +3,7 @@ import { createRecord, getRecord, resolveVendor } from '../src/main/apps/finance
 import { verify } from '../src/main/agent/verification'
 import { createHeadlessSandbox, type HeadlessSandbox } from '../src/main/sandbox/headless'
 import { ToolFailure } from '../src/main/tools/types'
-import { decide } from '../src/main/agent/policy'
+import { decide, loadPolicy, parsePolicyDocument, POLICY_FILE, STRICTEST_POLICY } from '../src/main/agent/policy'
 
 const ACM_1058 = {
   vendor: 'Acme Supplies',
@@ -89,10 +89,33 @@ describe('finance app', () => {
 })
 
 describe('policy', () => {
-  it('maps risk to a decision', () => {
-    expect(decide({ risk: 'read', requiresApproval: false })).toBe('auto')
-    expect(decide({ risk: 'write', requiresApproval: false })).toBe('auto')
-    expect(decide({ risk: 'financial', requiresApproval: false })).toBe('approval')
-    expect(decide({ risk: 'destructive', requiresApproval: false })).toBe('deny')
+  const doc = (block: string) => `# Policy\n\n\`\`\`policy\n${block}\n\`\`\`\n`
+  const loaded = parsePolicyDocument(doc('approval_threshold: 500\nmissing_due_date: note\nremit_account_mismatch: block'))
+
+  it('parses the policy block from the document', () => {
+    expect(loaded).toEqual({ policy: { approval_threshold: 500, missing_due_date: 'note', remit_account_mismatch: 'block' }, source: POLICY_FILE, warning: null })
+  })
+
+  it('maps risk and amount to a decision', () => {
+    expect(decide({ risk: 'read', requiresApproval: false }, null, loaded).decision).toBe('auto')
+    expect(decide({ risk: 'write', requiresApproval: false }, null, loaded).decision).toBe('auto')
+    expect(decide({ risk: 'financial', requiresApproval: true }, 312.4, loaded).decision).toBe('auto')
+    expect(decide({ risk: 'financial', requiresApproval: true }, 500, loaded).decision).toBe('approval')
+    expect(decide({ risk: 'financial', requiresApproval: true }, null, loaded).decision).toBe('approval')
+    expect(decide({ risk: 'destructive', requiresApproval: false }, null, loaded).decision).toBe('deny')
+  })
+
+  it('falls back to the strictest policy when the block is missing or invalid', () => {
+    expect(parsePolicyDocument('# no block')).toMatchObject({ policy: STRICTEST_POLICY, warning: expect.stringContaining('no') })
+    expect(parsePolicyDocument(doc('approval_threshold: lots'))).toMatchObject({ policy: STRICTEST_POLICY, warning: expect.stringContaining('invalid') })
+  })
+
+  it('reads the seeded policy from the sandbox Files', async () => {
+    const sb = await createHeadlessSandbox('happy_path')
+    try {
+      expect((await loadPolicy(sb.filesDir)).policy.approval_threshold).toBe(500)
+    } finally {
+      await sb.close()
+    }
   })
 })

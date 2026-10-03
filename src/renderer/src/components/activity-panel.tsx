@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageCircleQuestion,
   RefreshCw,
+  Scale,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
@@ -99,6 +100,15 @@ function Step({ item }: { item: Extract<ActivityItem, { kind: 'step' }> }) {
         <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{summarizeInput(item.input)}</span>
         <ChevronDown className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
       </button>
+      {item.policy && (
+        <div className="flex items-start gap-1.5 border-t px-2.5 py-1 text-[11px] text-muted-foreground">
+          <Scale className="mt-px size-3 shrink-0" />
+          <span>
+            {item.policy.decision === 'auto' ? 'Auto-approved' : item.policy.decision === 'approval' ? 'Needs approval' : 'Denied'}: {item.policy.reason}
+            {item.policy.warning && <span className="block text-warning">{item.policy.warning}</span>}
+          </span>
+        </div>
+      )}
       {item.retries.map((r) => (
         <div key={r.attempt} className="flex items-center gap-1.5 border-t px-2.5 py-1 text-[11px] text-warning">
           <RefreshCw className="size-3" /> Retry {r.attempt - 1}: {r.message}
