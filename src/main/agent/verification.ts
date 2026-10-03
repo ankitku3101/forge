@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { ScenarioId } from '@shared/scenarios'
-import type { VerificationCheck, VerificationResult, VerificationStatus } from '@shared/types'
+import type { VerificationCheck, VerificationResult, VerificationStatus, WorkItem } from '@shared/types'
 import { getRecord, searchRecords, toCents } from '../apps/finance'
 import type { Db } from '../db/client'
 import type { WriteLogEntry } from '../db/schema'
@@ -15,6 +15,7 @@ interface VerifyInput {
   scenario: ScenarioId
   writes: WriteLogEntry[]
   claims: FinishInput['claims']
+  worklist?: WorkItem[]
 }
 
 /**
@@ -22,7 +23,7 @@ interface VerifyInput {
  * 1. Write check: re-read every record/file the worker wrote and compare with what it submitted.
  * 2. Outcome check: compare stored values with the seeded ground truth.
  */
-export async function verify({ db, filesDir, scenario, writes, claims }: VerifyInput): Promise<VerificationResult> {
+export async function verify({ db, filesDir, scenario, writes, claims, worklist = [] }: VerifyInput): Promise<VerificationResult> {
   const truth = groundTruthFor(scenario)
   const checks: VerificationCheck[] = []
   const outcomeChecked = new Set<number>()
@@ -116,6 +117,22 @@ export async function verify({ db, filesDir, scenario, writes, claims }: VerifyI
       status: exists ? 'unverifiable' : 'mismatch',
       detail: exists ? 'File exists but was not written in this run.' : 'Claimed file does not exist.',
     })
+  }
+
+  // A tracked item marked done must be backed by something this run wrote that references it.
+  for (const item of worklist.filter((w) => w.status === 'done')) {
+    const key = item.key.toUpperCase()
+    let backed = [...lastRecordWrites.values()].some((w) => w.submitted.invoiceNumber.toUpperCase() === key)
+    for (const w of lastFileWrites.values()) {
+      if (backed || w.tool !== 'write_file') continue
+      const content = await readFile(resolveSandboxPath(filesDir, w.path), 'utf8').catch(() => '')
+      backed = content.toUpperCase().includes(key)
+    }
+    checks.push(
+      backed
+        ? { kind: 'item', target: item.key, status: 'verified', detail: 'Marked done, and a write in this run references it.' }
+        : { kind: 'item', target: item.key, status: 'unverifiable', detail: 'Marked done, but nothing written in this run references it.' },
+    )
   }
 
   return { status: overall(checks), checks }

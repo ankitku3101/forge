@@ -343,6 +343,49 @@ describe('agent runtime', () => {
     expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(0)
   }, 60_000)
 
+  it('enforces multi-item tasks: tracked items must be resolved, skips need reasons, done needs a write', async () => {
+    const h = await setup('happy_path', [
+      ...portalSignIn,
+      { tool: 'browser_open', args: { url: '/invoices?status=unpaid' } },
+      { tool: 'track_items', args: { items: [{ key: 'ACM-1052' }, { key: 'ACM-1058' }, { key: 'ACM-9999' }] } },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('ACM-9999') })
+        return { tool: 'track_items', args: { items: [{ key: 'ACM-1052', description: 'Label printer ribbons' }, { key: 'ACM-1058' }] } }
+      },
+      { tool: 'finish', args: { summary: 'All done!' } },
+      (m) => {
+        expect(lastObservation(m).error?.message).toContain('2 tracked item(s) are unresolved')
+        return { tool: 'browser_open', args: { url: '/invoices/3' } }
+      },
+      (m) => ({ tool: 'browser_download', args: { ref: refFor(lastSnapshot(m), /\[link "Download PDF"/) } }),
+      (m) => ({ tool: 'read_file', args: { path: lastObservation(m).data!.path } }),
+      {
+        tool: 'create_record',
+        args: { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1052', amount: 960, issueDate: '2026-09-10', dueDate: '2026-10-10', status: 'unpaid', remitAccount: '0042-117-4417' },
+      },
+      { tool: 'resolve_item', args: { key: 'ACM-1052', status: 'done' } },
+      { tool: 'resolve_item', args: { key: 'ACM-1058', status: 'skipped' } },
+      (m) => {
+        expect(lastObservation(m).error?.message).toContain('needs a reason')
+        return { tool: 'resolve_item', args: { key: 'ACM-1058', status: 'skipped', reason: 'User will handle it separately.' } }
+      },
+      { tool: 'finish', args: { summary: 'Added ACM-1052.', claims: { records: [{ vendor: 'Acme Supplies', invoiceNumber: 'ACM-1052' }] } } },
+    ])
+    const runId = await h.runtime.start('Add all unpaid Acme Supplies invoices from the vendor portal to Finance.')
+    expect((await answerSignIn(h, runId)).pending?.kind).toBe('approval')
+    await h.runtime.respond(runId, { kind: 'approval', approved: true })
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('completed')
+    expect(info.summary).toContain('Items: 1 of 2 done')
+    expect(info.summary).toContain('✗ skipped: ACM-1058 (User will handle it separately.)')
+    expect(info.worklist.map((w) => [w.key, w.status])).toEqual([
+      ['ACM-1052', 'done'],
+      ['ACM-1058', 'skipped'],
+    ])
+    expect(info.verification?.checks.find((c) => c.kind === 'item')).toMatchObject({ target: 'ACM-1052', status: 'verified' })
+    expect((await h.events.list(runId)).filter((e) => e.type === 'worklist_updated').length).toBeGreaterThanOrEqual(3)
+  }, 60_000)
+
   it('enforces the step limit', async () => {
     const h = await setup('happy_path', Array.from({ length: 40 }, (_, i) => ({ tool: 'remember', args: { fact: `fact ${i}` } })))
     const info = await h.runtime.settle(await h.runtime.start('loop forever'))

@@ -11,7 +11,7 @@ import {
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core'
-import type { PendingRequest, RunEventPayload, RunStatus, VerificationResult } from '@shared/types'
+import type { PendingRequest, RunEventPayload, RunStatus, VerificationResult, WorkItem } from '@shared/types'
 import type { ScenarioId } from '@shared/scenarios'
 import type { ChatMessage } from '../llm/types'
 
@@ -83,6 +83,7 @@ export const runs = pgTable('runs', {
   pending: jsonb('pending').$type<PendingRequest | null>(),
   stepCount: integer('step_count').notNull().default(0),
   writes: jsonb('writes').$type<WriteLogEntry[]>().notNull(),
+  worklist: jsonb('worklist').$type<WorkItem[]>().notNull().default([]),
   finishAttempts: integer('finish_attempts').notNull().default(0),
   usedFallback: boolean('used_fallback').notNull().default(false),
   tokensIn: integer('tokens_in').notNull().default(0),

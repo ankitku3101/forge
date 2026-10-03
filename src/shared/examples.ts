@@ -12,6 +12,10 @@ export const EXAMPLE_TASKS: { label: string; task: string; scenarios?: ScenarioI
     scenarios: ['ambiguous_vendor'],
   },
   {
+    label: 'Batch: all unpaid Acme',
+    task: 'Add all unpaid Acme Supplies invoices from the vendor portal to Finance.',
+  },
+  {
     label: 'Overdue summary',
     task: 'List overdue invoices and save a summary to Notes/overdue.md.',
   },

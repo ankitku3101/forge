@@ -79,7 +79,7 @@ export function App() {
             )}
           </div>
           <div className="row-span-2 flex min-h-0 flex-col">
-            <ActivityPanel run={run.info} items={run.activity} />
+            <ActivityPanel run={run.info} items={run.activity} worklist={run.worklist} />
           </div>
           <ChatPanel
             app={app}

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { traceFields } from '../agent/provenance'
 import { interactive, action, terminal, ToolFailure } from './types'
 
 export const finishInput = z.object({
@@ -31,6 +32,56 @@ export const workerTools = [
     async execute({ fact }, ctx) {
       ctx.facts.push(fact)
       return { remembered: ctx.facts.length }
+    },
+  }),
+
+  action({
+    name: 'track_items',
+    description:
+      'For tasks covering several items (e.g. "all unpaid invoices"), declare every item you found before working on them. Keys must be identifiers you saw in a source (e.g. invoice numbers). Call again to add items you discover later. Each item must then be resolved with resolve_item; finish is refused while any item is pending.',
+    input: z.object({
+      items: z.array(z.object({ key: z.string().min(1).max(60), description: z.string().max(200).default('') })).min(1).max(100),
+    }),
+    risk: 'read',
+    retry: 'none',
+    requiresApproval: false,
+    errors: ['VALIDATION'],
+    async execute({ items }, ctx) {
+      const res = traceFields(
+        ctx.sources,
+        items.map((i) => ({ name: i.key, label: 'Item', value: i.key, kind: 'token' as const })),
+      )
+      if (res.missing.length) {
+        throw new ToolFailure('VALIDATION', `These items are not in anything you opened during this task: ${res.missing.join('; ')}.`)
+      }
+      for (const i of items) {
+        if (ctx.worklist.some((w) => w.key.toUpperCase() === i.key.toUpperCase())) continue
+        ctx.worklist.push({ key: i.key, description: i.description, status: 'pending', source: res.found[i.key] })
+      }
+      return { items: ctx.worklist.map(({ key, status }) => ({ key, status })) }
+    },
+  }),
+
+  action({
+    name: 'resolve_item',
+    description: 'Mark a tracked item as done, or skipped with the reason (e.g. already recorded, blocked by policy, user said no).',
+    input: z.object({
+      key: z.string().min(1),
+      status: z.enum(['done', 'skipped']),
+      reason: z.string().max(500).default(''),
+    }),
+    risk: 'read',
+    retry: 'none',
+    requiresApproval: false,
+    errors: ['NOT_FOUND', 'VALIDATION'],
+    async execute({ key, status, reason }, ctx) {
+      const item = ctx.worklist.find((w) => w.key.toUpperCase() === key.trim().toUpperCase())
+      if (!item) throw new ToolFailure('NOT_FOUND', `"${key}" is not a tracked item. Tracked: ${ctx.worklist.map((w) => w.key).join(', ') || 'none'}.`)
+      if (status === 'skipped' && reason.trim().length < 5) throw new ToolFailure('VALIDATION', 'Skipping an item needs a reason.')
+      item.status = status
+      if (reason) item.reason = reason
+      const pending = ctx.worklist.filter((w) => w.status === 'pending').map((w) => w.key)
+      return { key: item.key, status, pending }
     },
   }),
 

@@ -8,7 +8,7 @@ export type RunState = typeof runs.$inferSelect
 export class RunStore {
   constructor(private readonly db: Db) {}
 
-  async create(state: Omit<RunState, 'createdAt' | 'updatedAt'>): Promise<RunState> {
+  async create(state: Omit<RunState, 'createdAt' | 'updatedAt' | 'worklist'>): Promise<RunState> {
     const [row] = await this.db.insert(runs).values(state).returning()
     return row!
   }
@@ -44,6 +44,7 @@ export function toInfo(r: RunState): RunInfo {
     status: r.status,
     stepCount: r.stepCount,
     pending: r.pending ?? null,
+    worklist: r.worklist ?? [],
     summary: r.summary,
     verification: r.verification ?? null,
     error: r.error,

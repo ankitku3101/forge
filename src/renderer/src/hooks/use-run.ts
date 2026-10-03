@@ -7,6 +7,7 @@ import type {
   RunInfo,
   ToolErrorCode,
   VerificationResult,
+  WorkItem,
 } from '@shared/types'
 import { api } from '@/lib/api'
 
@@ -52,6 +53,7 @@ export function deriveViews(events: RunEvent[]) {
   let model: string | undefined
   let lastWaiting: Extract<ActivityItem, { kind: 'step' }> | undefined
   let focus: FocusTarget | null = null
+  let worklist: WorkItem[] = []
 
   for (const e of events) {
     const id = `${e.runId}:${e.seq}`
@@ -74,6 +76,9 @@ export function deriveViews(events: RunEvent[]) {
         activity.push(item)
         break
       }
+      case 'worklist_updated':
+        worklist = e.items
+        break
       case 'injection_detected':
         activity.push({ kind: 'security', id, tool: e.tool, snippets: e.snippets, at: e.at })
         break
@@ -132,7 +137,7 @@ export function deriveViews(events: RunEvent[]) {
         break
     }
   }
-  return { activity, chat, focus }
+  return { activity, chat, focus, worklist }
 }
 
 function requestText(r: PendingRequest): string {

@@ -2,7 +2,9 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  Circle,
   CircleDot,
+  ListChecks,
   Clock,
   KeyRound,
   Loader2,
@@ -17,14 +19,14 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { RunInfo } from '@shared/types'
+import type { RunInfo, WorkItem } from '@shared/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { ActivityItem } from '@/hooks/use-run'
 import { formatTime } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './status-badge'
 
-export function ActivityPanel({ run, items }: { run: RunInfo | null; items: ActivityItem[] }) {
+export function ActivityPanel({ run, items, worklist }: { run: RunInfo | null; items: ActivityItem[]; worklist: WorkItem[] }) {
   const bottom = useRef<HTMLDivElement>(null)
   useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [items.length])
 
@@ -39,6 +41,7 @@ export function ActivityPanel({ run, items }: { run: RunInfo | null; items: Acti
           </>
         )}
       </div>
+      {worklist.length > 0 && <WorkItems items={worklist} />}
       <ScrollArea className="min-h-0 flex-1">
         <ol className="space-y-1.5 p-3">
           {items.length === 0 && <li className="py-8 text-center text-muted-foreground">Every step the worker takes shows up here: tool, result, retries, approvals and verification.</li>}
@@ -182,7 +185,41 @@ function Verification({ item }: { item: Extract<ActivityItem, { kind: 'verificat
   )
 }
 
-const CHECK_LABELS = { write: 'Write', provenance: 'Provenance', outcome: 'Ground truth (sandbox)' } as const
+const CHECK_LABELS = { write: 'Write', provenance: 'Provenance', outcome: 'Ground truth (sandbox)', item: 'Item' } as const
+
+function WorkItems({ items }: { items: WorkItem[] }) {
+  const done = items.filter((i) => i.status !== 'pending').length
+  return (
+    <div className="shrink-0 border-b px-3 py-2">
+      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <ListChecks className="size-3.5" /> Work items
+        <span className="ml-auto font-normal normal-case">
+          {done}/{items.length} resolved
+        </span>
+      </div>
+      <div className="mt-1.5 h-1 overflow-hidden rounded bg-muted">
+        <div className="h-full bg-primary transition-all" style={{ width: `${(done / items.length) * 100}%` }} />
+      </div>
+      <ul className="mt-2 space-y-1 text-[12px]">
+        {items.map((i) => (
+          <li key={i.key} className="flex items-start gap-1.5">
+            {i.status === 'done' ? (
+              <Check className="mt-0.5 size-3.5 shrink-0 text-success" />
+            ) : i.status === 'skipped' ? (
+              <X className="mt-0.5 size-3.5 shrink-0 text-warning" />
+            ) : (
+              <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            )}
+            <span className="font-mono">{i.key}</span>
+            <span className="min-w-0 truncate text-muted-foreground" title={i.reason ?? i.description}>
+              {i.reason ?? i.description}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (

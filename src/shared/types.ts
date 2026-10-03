@@ -45,7 +45,7 @@ export interface VerificationCheck {
    * write: re-read matches what was submitted · provenance: every value traced to an observed source ·
    * outcome: matches seeded ground truth (sandbox-only oracle)
    */
-  kind: 'write' | 'provenance' | 'outcome'
+  kind: 'write' | 'provenance' | 'outcome' | 'item'
   target: string
   status: VerificationStatus
   detail: string
@@ -54,6 +54,16 @@ export interface VerificationCheck {
 export interface VerificationResult {
   status: VerificationStatus
   checks: VerificationCheck[]
+}
+
+/** One unit of a multi-item task. Every tracked item must end done, or skipped with a reason. */
+export interface WorkItem {
+  key: string
+  description: string
+  status: 'pending' | 'done' | 'skipped'
+  reason?: string
+  /** Where the item was found (provenance). */
+  source?: string
 }
 
 export interface RunEventBase {
@@ -73,6 +83,7 @@ export type RunEventPayload =
   | { type: 'tool_failed'; toolCallId: string; tool: string; code: ToolErrorCode; message: string; durationMs: number }
   | { type: 'policy_decision'; toolCallId: string; decision: 'auto' | 'approval' | 'deny'; reason: string; warning: string | null }
   | { type: 'injection_detected'; toolCallId: string; tool: string; snippets: string[] }
+  | { type: 'worklist_updated'; items: WorkItem[] }
   | { type: 'focus_changed'; focus: FocusTarget }
   | { type: 'approval_requested'; request: PendingRequest }
   | { type: 'input_requested'; request: PendingRequest }
@@ -93,6 +104,7 @@ export interface RunInfo {
   status: RunStatus
   stepCount: number
   pending: PendingRequest | null
+  worklist: WorkItem[]
   summary: string | null
   verification: VerificationResult | null
   error: string | null

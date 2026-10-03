@@ -70,6 +70,7 @@ export class AgentRuntime {
   private readonly active = new Map<string, AbortController>()
   private readonly loops = new Map<string, Promise<void>>()
   private readonly lastFocus = new Map<string, string>()
+  private readonly lastWorklist = new Map<string, string>()
   private readonly maxSteps: number
   private readonly maxIdenticalFailures: number
   private readonly sleep: (ms: number) => Promise<void>
@@ -355,6 +356,11 @@ export class AgentRuntime {
 
     if (obs.ok) {
       await this.deps.events.emit(run.id, { type: 'tool_succeeded', toolCallId: call.id, tool: tool.name, output: obs.data, durationMs })
+      const worklist = JSON.stringify(run.worklist)
+      if (worklist !== (this.lastWorklist.get(run.id) ?? '[]')) {
+        this.lastWorklist.set(run.id, worklist)
+        await this.deps.events.emit(run.id, { type: 'worklist_updated', items: structuredClone(run.worklist) })
+      }
       await this.focus(run, tool.focus?.(input as never, obs.data as never))
       return
     }
@@ -381,10 +387,25 @@ export class AgentRuntime {
   }
 
   private async finish(run: RunState, call: ToolCall, tool: ToolDefinition, input: unknown): Promise<void> {
-    const { summary, claims, outcome } = input as z.output<typeof finishInput>
+    const { claims, outcome } = input as z.output<typeof finishInput>
+    const summary = withItemList(run, (input as z.output<typeof finishInput>).summary)
     const env = this.deps.env()
+
+    // Nothing may be skipped silently: every tracked item needs an explicit outcome first.
+    const pending = run.worklist.filter((w) => w.status === 'pending')
+    if (pending.length) {
+      await this.observe(
+        run,
+        call,
+        tool,
+        input,
+        fail('VALIDATION', `Not accepted: ${pending.length} tracked item(s) are unresolved (${pending.map((w) => w.key).join(', ')}). Resolve each with resolve_item (done, or skipped with a reason) before finishing.`),
+      )
+      return
+    }
+
     run.finishAttempts += 1
-    const result = await verify({ db: env.db, filesDir: env.filesDir, scenario: run.scenario, writes: run.writes, claims })
+    const result = await verify({ db: env.db, filesDir: env.filesDir, scenario: run.scenario, writes: run.writes, claims, worklist: run.worklist })
     run.verification = result
 
     if (result.status === 'mismatch') {
@@ -476,6 +497,7 @@ export class AgentRuntime {
       scenario: run.scenario,
       facts: run.facts,
       writes: run.writes,
+      worklist: run.worklist,
       sandboxChanged: env.sandboxChanged,
     }
   }
@@ -568,6 +590,14 @@ function describeResponse(r: UserResponse): string {
     case 'done_in_page':
       return 'Entered directly in the portal page'
   }
+}
+
+/** Appends a code-generated item list, so the summary can't misstate what was done or skipped. */
+function withItemList(run: RunState, summary: string): string {
+  if (run.worklist.length === 0) return summary
+  const lines = run.worklist.map((w) => `- ${w.status === 'done' ? '✓' : w.status === 'skipped' ? '✗ skipped:' : '…'} ${w.key}${w.reason ? ` (${w.reason})` : ''}`)
+  const done = run.worklist.filter((w) => w.status === 'done').length
+  return `${summary}\n\nItems: ${done} of ${run.worklist.length} done\n${lines.join('\n')}`
 }
 
 function withFallbackNote(run: RunState, summary: string): string {

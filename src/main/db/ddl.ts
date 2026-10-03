@@ -102,6 +102,9 @@ CREATE TABLE IF NOT EXISTS run_events (
   at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS run_events_run ON run_events (run_id, seq);
+
+-- Additive migrations: run history survives app upgrades.
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS worklist jsonb NOT NULL DEFAULT '[]';
 `
 
 /** Sandbox tables are dropped on reset; run history survives. */

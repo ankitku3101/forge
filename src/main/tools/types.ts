@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { FocusTarget, Risk, ToolErrorCode, UserResponse } from '@shared/types'
+import type { FocusTarget, Risk, ToolErrorCode, UserResponse, WorkItem } from '@shared/types'
 import type { ScenarioId } from '@shared/scenarios'
 import type { Db } from '../db/client'
 import type { WriteLogEntry } from '../db/schema'
@@ -29,6 +29,7 @@ export interface ToolContext {
   scenario: ScenarioId
   facts: string[]
   writes: WriteLogEntry[]
+  worklist: WorkItem[]
   /** Company policy as loaded from the sandbox's policy document for this step. */
   policy: LoadedPolicy
   /** Everything the worker has observed in this run, plus what the user said. Used for value provenance. */
