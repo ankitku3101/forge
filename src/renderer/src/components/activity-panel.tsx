@@ -158,7 +158,7 @@ function Verification({ item }: { item: Extract<ActivityItem, { kind: 'verificat
           <li key={i} className="flex gap-1.5">
             <StatusBadge status={c.status} className="shrink-0" />
             <span>
-              <span className="font-medium">{c.kind === 'write' ? 'Write' : 'Outcome'}</span> · {c.target}: <span className="text-muted-foreground">{c.detail}</span>
+              <span className="font-medium">{CHECK_LABELS[c.kind]}</span> · {c.target}: <span className="text-muted-foreground">{c.detail}</span>
             </span>
           </li>
         ))}
@@ -166,6 +166,8 @@ function Verification({ item }: { item: Extract<ActivityItem, { kind: 'verificat
     </div>
   )
 }
+
+const CHECK_LABELS = { write: 'Write', provenance: 'Provenance', outcome: 'Ground truth (sandbox)' } as const
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (

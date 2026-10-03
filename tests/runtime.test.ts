@@ -13,6 +13,8 @@ import { createRegistry } from '../src/main/tools/registry'
 import type { ScenarioId } from '../src/shared/scenarios'
 import { lastObservation, refFor, ScriptedProvider, type Step } from './helpers/scripted-llm'
 
+/** The task states the invoice's values, so they are user-provided sources for provenance. */
+const ACM_TASK = 'Add Acme Supplies invoice ACM-1058: $4,812.50, issued 2026-09-28, due 2026-10-28.'
 const ACM = { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058', amount: 4812.5, issueDate: '2026-09-28', dueDate: '2026-10-28', status: 'unpaid' }
 
 function lastSnapshot(messages: ChatMessage[]): string {
@@ -96,6 +98,9 @@ describe('agent runtime', () => {
     info = await h.runtime.settle(runId)
     expect(info.status).toBe('completed')
     expect(info.verification?.status).toBe('verified')
+    const prov = info.verification?.checks.find((c) => c.kind === 'provenance')
+    expect(prov?.detail).toContain('amount ← Downloads/ACM-1058.pdf')
+    expect(prov?.detail).toContain('due date ← Downloads/ACM-1058.pdf')
 
     const records = await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })
     expect(records).toHaveLength(1)
@@ -139,7 +144,7 @@ describe('agent runtime', () => {
       { tool: 'create_record', args: ACM },
       { tool: 'finish', args: { summary: 'done', claims: { records: [{ vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' }] } } },
     ])
-    const runId = await h.runtime.start('Add ACM-1058')
+    const runId = await h.runtime.start(ACM_TASK)
     await h.runtime.settle(runId)
     await h.runtime.respond(runId, { kind: 'approval', approved: true })
     const info = await h.runtime.settle(runId)
@@ -157,7 +162,7 @@ describe('agent runtime', () => {
         return { tool: 'finish', args: { summary: 'Already recorded.' } }
       },
     ])
-    const runId = await h.runtime.start('Add ACM-1058')
+    const runId = await h.runtime.start(ACM_TASK)
     const info = await h.runtime.settle(runId)
     expect(info.status).toBe('completed')
     expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(1)
@@ -171,7 +176,7 @@ describe('agent runtime', () => {
         return { tool: 'finish', args: { summary: 'Not added.', outcome: 'blocked' } }
       },
     ])
-    const runId = await h.runtime.start('Add ACM-1058')
+    const runId = await h.runtime.start(ACM_TASK)
     await h.runtime.settle(runId)
     await h.runtime.respond(runId, { kind: 'approval', approved: false, note: 'wrong vendor' })
     expect((await h.runtime.settle(runId)).status).toBe('failed')
@@ -187,7 +192,7 @@ describe('agent runtime', () => {
         return finish
       },
     ])
-    const runId = await h.runtime.start('Add ACM-1058')
+    const runId = await h.runtime.start(ACM_TASK)
     await h.runtime.settle(runId)
     await h.runtime.respond(runId, { kind: 'approval', approved: true })
     const info = await h.runtime.settle(runId)
@@ -246,7 +251,7 @@ describe('agent runtime', () => {
     // The user raises the threshold in the policy document; the next decision follows it.
     const policyPath = join(h.sb.filesDir, 'Policies/approval-policy.md')
     await writeFile(policyPath, (await readFile(policyPath, 'utf8')).replace('approval_threshold: 500', 'approval_threshold: 10000'))
-    const runId = await h.runtime.start('Add invoices')
+    const runId = await h.runtime.start(`Add Norvale Office invoice NO-5541 for $120.00 (issued 2026-10-01, due 2026-10-31), then: ${ACM_TASK}`)
     const info = await h.runtime.settle(runId)
     expect(info.status).toBe('completed')
     const decisions = (await h.events.list(runId)).filter((e) => e.type === 'policy_decision')
@@ -264,10 +269,28 @@ describe('agent runtime', () => {
       },
       { tool: 'finish', args: { summary: 'done' } },
     ])
-    const runId = await h.runtime.start('Add ACM-1058')
+    const runId = await h.runtime.start(ACM_TASK)
     expect((await h.runtime.settle(runId)).pending?.kind).toBe('approval')
     await h.runtime.respond(runId, { kind: 'approval', approved: true })
     expect((await h.runtime.settle(runId)).status).toBe('completed')
+  })
+
+  it('rejects values the worker never observed, before asking for approval', async () => {
+    const h = await setup('happy_path', [
+      { tool: 'create_record', args: ACM },
+      (m) => {
+        const err = lastObservation(m).error!
+        expect(err.code).toBe('VALIDATION')
+        expect(err.message).toContain('Amount $4,812.50')
+        expect(err.message).toContain('Due date 2026-10-28')
+        return { tool: 'finish', args: { summary: 'Could not source the values.', outcome: 'blocked' } }
+      },
+    ])
+    const runId = await h.runtime.start('Add the latest Acme Supplies invoice to Finance.')
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('failed')
+    expect((await h.events.list(runId)).some((e) => e.type === 'approval_requested')).toBe(false)
+    expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(0)
   })
 
   it('enforces the step limit', async () => {

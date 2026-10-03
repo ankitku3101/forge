@@ -1,9 +1,19 @@
 import { extname } from 'node:path'
 import { z } from 'zod'
 import { flattenTree, listTree, readSandboxFile, TEXT_EXTENSIONS, writeSandboxFile } from '../sandbox/files'
-import { action, ToolFailure } from './types'
+import { extractCheckableValues, traceFields } from '../agent/provenance'
+import { action, ToolFailure, type ToolContext } from './types'
 
 const MAX_TEXT = 20_000
+
+/** Every amount, date and invoice-like identifier in written text must trace to an observed source. */
+function traceContent(ctx: ToolContext, content: string): Record<string, string> {
+  const res = traceFields(ctx.sources, extractCheckableValues(content))
+  if (res.missing.length) {
+    throw new ToolFailure('VALIDATION', `These values are not in anything you opened during this task: ${res.missing.join('; ')}. Only write values you have read from a source.`)
+  }
+  return res.found
+}
 
 export const fileTools = [
   action({
@@ -69,12 +79,16 @@ export const fileTools = [
     requiresApproval: false,
     errors: ['VALIDATION', 'PERMISSION_DENIED'],
     focus: ({ path }) => ({ kind: 'file', path }),
+    async precheck({ content }, ctx) {
+      traceContent(ctx, content)
+    },
     async execute({ path, content }, ctx) {
       if (!TEXT_EXTENSIONS.has(extname(path).toLowerCase())) {
         throw new ToolFailure('VALIDATION', 'Only .md, .txt, .csv and .json files can be written.')
       }
+      const provenance = traceContent(ctx, content)
       const res = await writeSandboxFile(ctx.filesDir, path, content)
-      ctx.writes.push({ kind: 'file', tool: 'write_file', path: res.path, sha256: res.sha256 })
+      ctx.writes.push({ kind: 'file', tool: 'write_file', path: res.path, sha256: res.sha256, provenance })
       ctx.sandboxChanged('files')
       return { path: res.path, created: res.created, bytes: Buffer.byteLength(content) }
     },

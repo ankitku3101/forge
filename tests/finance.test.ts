@@ -53,7 +53,7 @@ describe('finance app', () => {
   it('verifies a correct write and flags a silently rounded one', async () => {
     sb = await createHeadlessSandbox('happy_path')
     const rec = await createRecord(sb.database.db, sb.faults, ACM_1058)
-    const writes = [{ kind: 'record' as const, tool: 'create_record', recordId: rec.id, submitted: { ...ACM_1058 } }]
+    const writes = [{ kind: 'record' as const, tool: 'create_record', recordId: rec.id, submitted: { ...ACM_1058 }, provenance: { amount: 'invoice.pdf' } }]
     const ok = await verify({ db: sb.database.db, filesDir: sb.filesDir, scenario: 'happy_path', writes, claims: { records: [], files: [] } })
     expect(ok.status).toBe('verified')
     await sb.close()
@@ -80,7 +80,7 @@ describe('finance app', () => {
       db: sb.database.db,
       filesDir: sb.filesDir,
       scenario: 'happy_path',
-      writes: [{ kind: 'record', tool: 'create_record', recordId: rec.id, submitted: wrong }],
+      writes: [{ kind: 'record', tool: 'create_record', recordId: rec.id, submitted: wrong, provenance: {} }],
       claims: { records: [], files: [] },
     })
     expect(res.checks.find((c) => c.kind === 'write')?.status).toBe('verified')

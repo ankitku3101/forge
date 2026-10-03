@@ -12,6 +12,7 @@ import { ToolFailure, type ToolContext, type ToolDefinition } from '../tools/typ
 import type { finishInput } from '../tools/worker'
 import type { EventLog } from './events'
 import { decide, loadPolicy } from './policy'
+import { collectSources } from './provenance'
 import { systemPrompt } from './prompts/system'
 import { toInfo, type RunState, type RunStore } from './store'
 import { verify } from './verification'
@@ -274,7 +275,7 @@ export class AgentRuntime {
     }
 
     if (decision === 'approval') {
-      const summary = tool.approval?.(input) ?? { title: `Run ${tool.name}`, details: input as Record<string, unknown> }
+      const summary = tool.approval?.(input, ctx) ??{ title: `Run ${tool.name}`, details: input as Record<string, unknown> }
       await this.pause(run, { kind: 'approval', toolCallId: call.id, tool: tool.name, ...summary, details: { ...summary.details, Policy: reason } })
       return
     }
@@ -436,6 +437,7 @@ export class AgentRuntime {
     const env = this.deps.env()
     return {
       policy: await loadPolicy(env.filesDir),
+      sources: collectSources(run.messages),
       db: env.db,
       filesDir: env.filesDir,
       faults: env.faults,

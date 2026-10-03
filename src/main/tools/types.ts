@@ -6,6 +6,7 @@ import type { WriteLogEntry } from '../db/schema'
 import type { Faults } from '../sandbox/faults'
 import type { BrowserDriver } from '../browser/driver'
 import type { LoadedPolicy } from '../agent/policy'
+import type { Source } from '../agent/provenance'
 
 /** A typed, expected tool failure. Returned to the model as an observation, never surfaced as a crash. */
 export class ToolFailure extends Error {
@@ -30,6 +31,8 @@ export interface ToolContext {
   writes: WriteLogEntry[]
   /** Company policy as loaded from the sandbox's policy document for this step. */
   policy: LoadedPolicy
+  /** Everything the worker has observed in this run, plus what the user said. Used for value provenance. */
+  sources: Source[]
   /** Notifies the UI that the sandbox changed so it can refresh. */
   sandboxChanged(area: 'files' | 'mail' | 'finance'): void
 }
@@ -53,7 +56,7 @@ interface ToolBase<I extends z.ZodType, O> {
   /** What the Workspace shows while/after this tool runs. */
   focus?: (input: z.output<I>, output?: O) => FocusTarget
   /** Short human summary for the approval card (financial tools). */
-  approval?: (input: z.output<I>) => { title: string; details: Record<string, unknown> }
+  approval?: (input: z.output<I>, ctx: ToolContext) => { title: string; details: Record<string, unknown> }
   /** Amount at stake, compared with the policy's approval threshold (financial tools). */
   approvalAmount?: (input: z.output<I>, ctx: ToolContext) => Promise<number | null>
   /**

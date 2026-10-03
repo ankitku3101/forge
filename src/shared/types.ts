@@ -41,7 +41,11 @@ export type UserResponse =
 export type VerificationStatus = 'verified' | 'mismatch' | 'unverifiable'
 
 export interface VerificationCheck {
-  kind: 'write' | 'outcome'
+  /**
+   * write: re-read matches what was submitted · provenance: every value traced to an observed source ·
+   * outcome: matches seeded ground truth (sandbox-only oracle)
+   */
+  kind: 'write' | 'provenance' | 'outcome'
   target: string
   status: VerificationStatus
   detail: string

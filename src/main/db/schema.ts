@@ -114,8 +114,10 @@ export type WriteLogEntry =
       tool: string
       recordId: number
       submitted: { vendor: string; invoiceNumber: string; amount: number; dueDate: string | null; issueDate: string | null; status: string }
+      /** field → label of the source the value was traced to */
+      provenance: Record<string, string>
     }
-  | { kind: 'file'; tool: string; path: string; sha256: string }
+  | { kind: 'file'; tool: string; path: string; sha256: string; provenance?: Record<string, string> }
 
 // ---------- Arcus Vendor Portal (separate schema; Finance tools never query it) ----------
 

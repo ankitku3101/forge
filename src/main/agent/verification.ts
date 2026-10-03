@@ -56,6 +56,7 @@ export async function verify({ db, filesDir, scenario, writes, claims }: VerifyI
         ? { kind: 'write', target, status: 'mismatch', detail: `Finance stored different values: ${diffs.join('; ')}.` }
         : { kind: 'write', target, status: 'verified', detail: `Record ${stored.id} re-read; stored values match what was submitted.` },
     )
+    checks.push(provenanceCheck(target, w.provenance))
     checks.push(outcomeCheck(stored, truth.invoices))
     outcomeChecked.add(stored.id)
   }
@@ -88,6 +89,7 @@ export async function verify({ db, filesDir, scenario, writes, claims }: VerifyI
       status: same ? 'verified' : 'mismatch',
       detail: same ? 'File re-read; content matches what was written.' : 'File content differs from what was written.',
     })
+    if (w.tool === 'write_file') checks.push(provenanceCheck(w.path, w.provenance))
     const expect = truth.files[w.path]
     if (expect && w.tool === 'write_file') {
       const text = content.toString('utf8').toUpperCase()
@@ -135,9 +137,28 @@ function outcomeCheck(
     : { kind: 'outcome', target, status: 'verified', detail: 'Matches the source invoice.' }
 }
 
+const FIELD_LABELS: Record<string, string> = { vendor: 'vendor', invoiceNumber: 'invoice no.', amount: 'amount', issueDate: 'issue date', dueDate: 'due date' }
+
+function provenanceCheck(target: string, provenance: Record<string, string> | undefined): VerificationCheck {
+  if (!provenance) return { kind: 'provenance', target, status: 'unverifiable', detail: 'No provenance was recorded for this write.' }
+  const entries = Object.entries(provenance)
+  if (entries.length === 0) return { kind: 'provenance', target, status: 'verified', detail: 'Contains no amounts, dates or identifiers that need a source.' }
+  return {
+    kind: 'provenance',
+    target,
+    status: 'verified',
+    detail: entries.map(([field, src]) => `${FIELD_LABELS[field] ?? field.replace(/^\w+:/, '')} ← ${src}`).join('; '),
+  }
+}
+
+/**
+ * Write and provenance checks work on any data. The ground-truth outcome check is a sandbox-only
+ * oracle: it can turn a result into a mismatch, but its absence does not make a result unverifiable.
+ */
 function overall(checks: VerificationCheck[]): VerificationStatus {
-  if (checks.length === 0) return 'unverifiable'
   if (checks.some((c) => c.status === 'mismatch')) return 'mismatch'
-  if (checks.every((c) => c.status === 'verified')) return 'verified'
+  const required = checks.filter((c) => c.kind !== 'outcome' || c.status !== 'unverifiable')
+  if (required.length === 0) return 'unverifiable'
+  if (required.every((c) => c.status === 'verified')) return 'verified'
   return 'unverifiable'
 }

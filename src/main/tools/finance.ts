@@ -2,7 +2,42 @@ import { z } from 'zod'
 import { assertNotDuplicate, createRecord, getRecord, resolveVendor, searchRecords, updateRecord } from '../apps/finance'
 import { formatMoney } from '../sandbox/pdf'
 import type { LoadedPolicy } from '../agent/policy'
-import { action, ToolFailure } from './types'
+import { traceFields, type Field } from '../agent/provenance'
+import { action, ToolFailure, type ToolContext } from './types'
+
+const UNSOURCED = 'Not found in anything you opened during this task'
+
+/**
+ * Every value written to Finance must come from an observed source. The amount and dates must sit
+ * in the same source as the invoice number (e.g. the invoice PDF), unless the user stated them.
+ */
+function traceNewRecord(ctx: ToolContext, i: { vendor: string; invoiceNumber: string; amount: number; issueDate: string | null; dueDate: string | null }) {
+  const fields: Field[] = [
+    { name: 'vendor', label: 'Vendor', value: i.vendor, kind: 'text' },
+    { name: 'invoiceNumber', label: 'Invoice number', value: i.invoiceNumber, kind: 'token' },
+    { name: 'amount', label: 'Amount', value: i.amount, kind: 'amount' },
+    ...(i.issueDate ? [{ name: 'issueDate', label: 'Issue date', value: i.issueDate, kind: 'date' as const }] : []),
+    ...(i.dueDate ? [{ name: 'dueDate', label: 'Due date', value: i.dueDate, kind: 'date' as const }] : []),
+  ]
+  return requireTrace(ctx, fields)
+}
+
+function traceUpdate(ctx: ToolContext, invoiceNumber: string, patch: { amount?: number; dueDate?: string | null }) {
+  const fields: Field[] = [
+    { name: 'invoiceNumber', label: 'Invoice number', value: invoiceNumber, kind: 'token' },
+    ...(patch.amount !== undefined ? [{ name: 'amount', label: 'Amount', value: patch.amount, kind: 'amount' as const }] : []),
+    ...(patch.dueDate ? [{ name: 'dueDate', label: 'Due date', value: patch.dueDate, kind: 'date' as const }] : []),
+  ]
+  return requireTrace(ctx, fields)
+}
+
+function requireTrace(ctx: ToolContext, fields: Field[]): Record<string, string> {
+  const res = traceFields(ctx.sources, fields, { anchor: 'invoiceNumber', anchored: ['amount', 'issueDate', 'dueDate'] })
+  if (res.missing.length) {
+    throw new ToolFailure('VALIDATION', `${UNSOURCED}: ${res.missing.join('; ')}. Open the source document (or ask the user) and use its exact values.`)
+  }
+  return res.found
+}
 
 /** Applies the document policy's `missing_due_date` rule. */
 function checkMissingDueDate({ policy, source }: LoadedPolicy, notes: string): void {
@@ -71,30 +106,37 @@ export const financeTools = [
     requiresApproval: true,
     errors: ['VALIDATION', 'NOT_FOUND', 'AMBIGUOUS', 'DUPLICATE_RECORD', 'TRANSIENT', 'PERMISSION_DENIED'],
     focus: (_i, out) => (out ? { kind: 'record', id: (out as { id: number }).id, changed: ['*'] } : { kind: 'records' }),
-    approval: (i) => ({
-      title: `Add ${i.vendor} invoice ${i.invoiceNumber} to Finance`,
-      details: {
-        Vendor: i.vendor,
-        'Invoice no.': i.invoiceNumber,
-        Amount: formatMoney(Math.round(i.amount * 100), i.currency),
-        'Issue date': i.issueDate ?? '—',
-        'Due date': i.dueDate ?? 'none',
-        Status: i.status,
-        ...(i.notes ? { Notes: i.notes } : {}),
-      },
-    }),
+    approval: (i, ctx) => {
+      const p = traceNewRecord(ctx, i)
+      const src = (f: string) => (p[f] ? `  ← ${p[f]}` : '')
+      return {
+        title: `Add ${i.vendor} invoice ${i.invoiceNumber} to Finance`,
+        details: {
+          Vendor: i.vendor + src('vendor'),
+          'Invoice no.': i.invoiceNumber + src('invoiceNumber'),
+          Amount: formatMoney(Math.round(i.amount * 100), i.currency) + src('amount'),
+          'Issue date': (i.issueDate ?? '—') + src('issueDate'),
+          'Due date': (i.dueDate ?? 'none') + src('dueDate'),
+          Status: i.status,
+          ...(i.notes ? { Notes: i.notes } : {}),
+        },
+      }
+    },
     approvalAmount: async (i) => i.amount,
     async precheck(i, ctx) {
       await assertNotDuplicate(ctx.db, i.vendor, i.invoiceNumber)
+      traceNewRecord(ctx, i)
       if (i.dueDate === null) checkMissingDueDate(ctx.policy, i.notes)
     },
     async execute(i, ctx) {
+      const provenance = traceNewRecord(ctx, i)
       const rec = await createRecord(ctx.db, ctx.faults, i)
       ctx.writes.push({
         kind: 'record',
         tool: 'create_record',
         recordId: rec.id,
         submitted: { vendor: rec.vendorName, invoiceNumber: i.invoiceNumber, amount: i.amount, dueDate: i.dueDate, issueDate: i.issueDate, status: i.status },
+        provenance,
       })
       ctx.sandboxChanged('finance')
       // Return identifiers only; verification re-reads the stored values independently.
@@ -126,9 +168,11 @@ export const financeTools = [
     approvalAmount: async (i, ctx) => i.amount ?? (await getRecord(ctx.db, i.id)).amount,
     async precheck(i, ctx) {
       const rec = await getRecord(ctx.db, i.id)
+      traceUpdate(ctx, rec.invoiceNumber, i)
       if (i.dueDate === null && rec.dueDate !== null) checkMissingDueDate(ctx.policy, i.notes ?? rec.notes)
     },
     async execute({ id, ...patch }, ctx) {
+      const provenance = traceUpdate(ctx, (await getRecord(ctx.db, id)).invoiceNumber, patch)
       const rec = await updateRecord(ctx.db, ctx.faults, id, patch)
       const vendor = await resolveVendor(ctx.db, rec.vendorName)
       ctx.writes.push({
@@ -143,6 +187,7 @@ export const financeTools = [
           issueDate: rec.issueDate,
           status: patch.status ?? rec.status,
         },
+        provenance,
       })
       ctx.sandboxChanged('finance')
       return { id: rec.id, updated: Object.keys(patch) }
