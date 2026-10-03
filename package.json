@@ -1,0 +1,73 @@
+{
+  "name": "autonomous-ai-worker",
+  "productName": "Autonomous AI Worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An AI worker completes tasks inside Arcus, a fictional company, while you watch.",
+  "main": "out/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "seed": "tsx seed/build.ts",
+    "eval": "tsx evals/run.ts",
+    "build": "electron-vite build && electron-builder",
+    "build:app": "electron-vite build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@faker-js/faker": "10.6.0",
+    "cookie-parser": "1.4.7",
+    "dotenv": "18.0.5",
+    "drizzle-orm": "0.45.3",
+    "express": "5.2.1",
+    "openai": "7.27.0",
+    "pdf-lib": "1.17.1",
+    "playwright-core": "1.63.0",
+    "svg-captcha": "1.4.0",
+    "unpdf": "1.8.1",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/cookie-parser": "1.4.10",
+    "@types/express": "5.0.6",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "lucide-react": "1.51.0",
+    "playwright": "1.63.0",
+    "radix-ui": "1.6.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "tw-animate-css": "1.4.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vite": "7.3.6",
+    "vitest": "5.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ]
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

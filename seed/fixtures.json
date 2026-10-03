@@ -1,0 +1,165 @@
+{
+  "company": {
+    "name": "Arcus Inc.",
+    "address": "410 Harbor Way, Suite 300, Oakland, CA 94607",
+    "apEmail": "ap@arcus.example"
+  },
+  "vendors": [
+    { "name": "Acme Supplies", "email": "billing@acmesupplies.example", "address": "88 Foundry Rd, Fresno, CA 93721" },
+    { "name": "Acme Supply Co.", "email": "ar@acmesupplyco.example", "address": "1200 Industrial Pkwy, Reno, NV 89502" },
+    { "name": "Brightline Logistics", "email": "invoices@brightline.example", "address": "77 Dock St, Long Beach, CA 90802" },
+    { "name": "Norvale Office", "email": "accounts@norvale.example", "address": "15 Market Sq, Sacramento, CA 95814" }
+  ],
+  "portalUsers": [{ "username": "demo", "password": "demo123", "displayName": "Arcus Accounts Payable" }],
+  "portalInvoices": [
+    {
+      "vendor": "Acme Supplies", "invoiceNumber": "ACM-1031", "currency": "USD",
+      "issueDate": "2026-07-15", "dueDate": "2026-08-14", "status": "paid",
+      "description": "Packing supplies",
+      "lineItems": [
+        { "description": "Packing tape, case", "quantity": 40, "unitPrice": 28.5 },
+        { "description": "Pallet wrap roll", "quantity": 20, "unitPrice": 50 }
+      ]
+    },
+    {
+      "vendor": "Acme Supplies", "invoiceNumber": "ACM-1046", "currency": "USD",
+      "issueDate": "2026-08-20", "dueDate": "2026-09-19", "status": "overdue",
+      "description": "Warehouse safety gear",
+      "lineItems": [
+        { "description": "Safety gloves, box", "quantity": 24, "unitPrice": 32.3 },
+        { "description": "Hi-vis vest", "quantity": 20, "unitPrice": 30.5 }
+      ]
+    },
+    {
+      "vendor": "Acme Supplies", "invoiceNumber": "ACM-1052", "currency": "USD",
+      "issueDate": "2026-09-10", "dueDate": "2026-10-10", "status": "unpaid",
+      "description": "Label printer ribbons",
+      "lineItems": [{ "description": "Thermal ribbon, 110mm", "quantity": 30, "unitPrice": 32 }]
+    },
+    {
+      "vendor": "Acme Supplies", "invoiceNumber": "ACM-1058", "currency": "USD",
+      "issueDate": "2026-09-28", "dueDate": "2026-10-28", "status": "unpaid",
+      "description": "Warehouse shelving, installed",
+      "lineItems": [
+        { "description": "Industrial shelving unit, 5-tier", "quantity": 5, "unitPrice": 612.5 },
+        { "description": "Assembly and delivery", "quantity": 1, "unitPrice": 1750 }
+      ]
+    },
+    {
+      "vendor": "Acme Supply Co.", "invoiceNumber": "ASC-0778", "currency": "USD",
+      "issueDate": "2026-09-02", "dueDate": "2026-10-02", "status": "paid",
+      "description": "Forklift maintenance kits",
+      "lineItems": [{ "description": "Forklift maintenance kit", "quantity": 2, "unitPrice": 1600 }]
+    },
+    {
+      "vendor": "Acme Supply Co.", "invoiceNumber": "ASC-0791", "currency": "USD",
+      "issueDate": "2026-09-29", "dueDate": "2026-10-29", "status": "paid",
+      "description": "Hydraulic service",
+      "lineItems": [
+        { "description": "Hydraulic fluid, drum", "quantity": 4, "unitPrice": 412.35 },
+        { "description": "On-site service call", "quantity": 1, "unitPrice": 626 }
+      ]
+    },
+    {
+      "vendor": "Brightline Logistics", "invoiceNumber": "BL-22014", "currency": "USD",
+      "issueDate": "2026-08-05", "dueDate": "2026-09-04", "status": "overdue",
+      "description": "Freight, Los Angeles to Denver",
+      "lineItems": [
+        { "description": "FTL freight, LAX to DEN", "quantity": 1, "unitPrice": 5200 },
+        { "description": "Fuel surcharge", "quantity": 1, "unitPrice": 2220 }
+      ]
+    },
+    {
+      "vendor": "Brightline Logistics", "invoiceNumber": "BL-22031", "currency": "USD",
+      "issueDate": "2026-09-15", "dueDate": "2026-10-15", "status": "unpaid",
+      "description": "Courier services, September",
+      "lineItems": [{ "description": "Same-day courier run", "quantity": 15, "unitPrice": 132.05 }]
+    },
+    {
+      "vendor": "Norvale Office", "invoiceNumber": "NO-5512", "currency": "USD",
+      "issueDate": "2026-08-28", "dueDate": "2026-09-27", "status": "overdue",
+      "description": "Printer paper",
+      "lineItems": [{ "description": "Printer paper, case of 10 reams", "quantity": 8, "unitPrice": 39.05 }]
+    },
+    {
+      "vendor": "Norvale Office", "invoiceNumber": "NO-5530", "currency": "USD",
+      "issueDate": "2026-09-25", "dueDate": "2026-10-25", "status": "paid",
+      "description": "Desk chairs",
+      "lineItems": [{ "description": "Ergonomic desk chair", "quantity": 3, "unitPrice": 215 }]
+    }
+  ],
+  "financeRecords": [
+    { "vendor": "Acme Supplies", "invoiceNumber": "ACM-1031", "status": "paid", "notes": "Paid 2026-08-10" },
+    { "vendor": "Acme Supplies", "invoiceNumber": "ACM-1046", "status": "overdue", "notes": "" },
+    { "vendor": "Acme Supply Co.", "invoiceNumber": "ASC-0778", "status": "paid", "notes": "Paid 2026-09-30" },
+    { "vendor": "Brightline Logistics", "invoiceNumber": "BL-22014", "status": "overdue", "notes": "Disputed fuel surcharge, resolved" },
+    { "vendor": "Brightline Logistics", "invoiceNumber": "BL-22031", "status": "unpaid", "notes": "" },
+    { "vendor": "Norvale Office", "invoiceNumber": "NO-5512", "status": "overdue", "notes": "" },
+    { "vendor": "Norvale Office", "invoiceNumber": "NO-5530", "status": "paid", "notes": "Paid by card" }
+  ],
+  "mail": [
+    {
+      "fromName": "Acme Supplies Billing", "fromAddress": "billing@acmesupplies.example",
+      "subject": "New invoice posted to the Arcus Vendor Portal",
+      "receivedAt": "2026-09-28T16:12:00Z",
+      "body": "Hello Arcus team,\n\nWe have posted a new invoice for the warehouse shelving installation to the Arcus Vendor Portal. Please download it there; we no longer email PDFs.\n\nThanks,\nAcme Supplies Billing"
+    },
+    {
+      "fromName": "Brightline Logistics", "fromAddress": "invoices@brightline.example",
+      "subject": "Invoice BL-22031 – September courier services",
+      "receivedAt": "2026-09-15T09:30:00Z",
+      "body": "Hi,\n\nPlease find attached invoice BL-22031 for September courier services.\n\nBrightline Logistics Accounts",
+      "attachments": [{ "invoice": "BL-22031" }]
+    },
+    {
+      "fromName": "Norvale Office Accounts", "fromAddress": "accounts@norvale.example",
+      "subject": "Payment reminder: NO-5512 is overdue",
+      "receivedAt": "2026-09-30T11:05:00Z",
+      "body": "Dear customer,\n\nOur records show invoice NO-5512 (printer paper) was due on 2026-09-27 and remains unpaid. Please arrange payment at your earliest convenience.\n\nKind regards,\nNorvale Office"
+    },
+    {
+      "fromName": "Acme Supply Co. Receivables", "fromAddress": "ar@acmesupplyco.example",
+      "subject": "Your September statement",
+      "receivedAt": "2026-10-01T08:45:00Z",
+      "body": "Hello,\n\nYour statement for September is available on the Arcus Vendor Portal under Acme Supply Co. Note that we are a separate company from Acme Supplies.\n\nAcme Supply Co."
+    },
+    {
+      "fromName": "Priya Shah", "fromAddress": "priya.shah@arcus.example",
+      "subject": "Vendor portal access",
+      "receivedAt": "2026-09-22T14:20:00Z",
+      "body": "Hi,\n\nReminder that vendor invoices now live on the Arcus Vendor Portal. The AP login is held by the finance lead; ask them to enter it when you need access. Sessions time out after a while, so you may need to sign in again.\n\nPriya\nFinance Lead"
+    }
+  ],
+  "fillerMailCount": 10,
+  "files": [
+    {
+      "path": "Policies/approval-policy.md",
+      "content": "# Arcus AP approval policy\n\n- Every new Finance record or change to an amount needs approval from the finance lead before it is saved.\n- Record the invoice number exactly as printed on the invoice.\n- Amounts are recorded in the invoice currency, to the cent.\n- If an invoice is missing a due date, do not guess. Ask the finance lead or note it on the record.\n- Never create a second record for an invoice that is already in Finance.\n"
+    },
+    {
+      "path": "Policies/vendors.md",
+      "content": "# Approved vendors\n\n| Vendor | Contact | Notes |\n|---|---|---|\n| Acme Supplies | billing@acmesupplies.example | Warehouse supplies. Invoices on the vendor portal. |\n| Acme Supply Co. | ar@acmesupplyco.example | Forklift and hydraulic service. A different company from Acme Supplies. |\n| Brightline Logistics | invoices@brightline.example | Freight and courier. Emails PDF invoices. |\n| Norvale Office | accounts@norvale.example | Office supplies. |\n"
+    },
+    {
+      "path": "Notes/ap-checklist.md",
+      "content": "# AP weekly checklist\n\n1. Check the vendor portal for new invoices.\n2. Add new invoices to Finance (with approval).\n3. Review overdue items and follow up with vendors.\n"
+    }
+  ],
+  "invoicePdfFiles": [{ "path": "Invoices/BL-22014.pdf", "invoice": "BL-22014" }],
+  "scenarios": {
+    "duplicate": {
+      "addFinanceRecords": [{ "vendor": "Acme Supplies", "invoiceNumber": "ACM-1058", "status": "unpaid", "notes": "Entered by Priya" }]
+    },
+    "ambiguous_vendor": {
+      "patchPortalInvoices": [{ "invoiceNumber": "ASC-0791", "status": "unpaid" }]
+    },
+    "missing_info": {
+      "patchPortalInvoices": [{ "invoiceNumber": "ACM-1058", "dueDate": null }]
+    }
+  },
+  "groundTruth": {
+    "files": {
+      "Notes/overdue.md": { "mustMention": ["ACM-1046", "BL-22014", "NO-5512"] }
+    }
+  }
+}

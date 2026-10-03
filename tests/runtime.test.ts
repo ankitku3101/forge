@@ -1,0 +1,240 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { AgentRuntime } from '../src/main/agent/runtime'
+import { EventLog } from '../src/main/agent/events'
+import { RunStore } from '../src/main/agent/store'
+import { searchRecords } from '../src/main/apps/finance'
+import { LLMRouter } from '../src/main/llm/router'
+import type { ChatMessage } from '../src/main/llm/types'
+import { CAPTCHA_COOKIE } from '../src/main/portal/server'
+import { createHeadlessSandbox, type HeadlessSandbox } from '../src/main/sandbox/headless'
+import { createRegistry } from '../src/main/tools/registry'
+import type { ScenarioId } from '../src/shared/scenarios'
+import { lastObservation, refFor, ScriptedProvider, type Step } from './helpers/scripted-llm'
+
+const ACM = { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058', amount: 4812.5, issueDate: '2026-09-28', dueDate: '2026-10-28', status: 'unpaid' }
+
+function lastSnapshot(messages: ChatMessage[]): string {
+  for (const m of [...messages].reverse()) {
+    if (m.role === 'tool' && m.content.includes('"snapshot"')) return (JSON.parse(m.content) as { data: { snapshot: string } }).data.snapshot
+  }
+  throw new Error('no snapshot')
+}
+
+let sb: HeadlessSandbox | null = null
+afterEach(async () => {
+  await sb?.close()
+  sb = null
+})
+
+async function setup(scenario: ScenarioId, steps: Step[]) {
+  sb = await createHeadlessSandbox(scenario)
+  const sandbox = sb
+  const provider = new ScriptedProvider(steps)
+  const store = new RunStore(sandbox.database.db)
+  const events = new EventLog(sandbox.database.db)
+  const make = () =>
+    new AgentRuntime({
+      store,
+      events,
+      registry: createRegistry(),
+      router: () => new LLMRouter({ primary: provider }),
+      env: () => sandbox.env,
+      sleep: async () => undefined,
+      today: () => '2026-10-03',
+    })
+  return { sb: sandbox, provider, store, events, runtime: make(), make }
+}
+
+const portalSignIn: Step[] = [
+  { tool: 'browser_open', args: { url: '/invoices' } },
+  { tool: 'request_credentials', args: { site: 'Arcus Vendor Portal' } },
+  { tool: 'request_captcha' },
+  (m) => ({ tool: 'browser_click', args: { ref: refFor(lastSnapshot(m), /\[button "Sign in"/) } }),
+]
+
+const downloadAndRecord: Step[] = [
+  (m) => {
+    const row = lastSnapshot(m).split('\n').find((l) => l.includes('ACM-1058'))!
+    return { tool: 'browser_click', args: { ref: /ref=(e\d+)/.exec(row)![1] } }
+  },
+  (m) => ({ tool: 'browser_download', args: { ref: refFor(lastSnapshot(m), /\[link "Download PDF"/) } }),
+  (m) => ({ tool: 'read_file', args: { path: lastObservation(m).data!.path } }),
+  { tool: 'search_records', args: { vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' } },
+  { tool: 'create_record', args: ACM },
+]
+
+async function answerSignIn(h: Awaited<ReturnType<typeof setup>>, runId: string) {
+  let info = await h.runtime.settle(runId)
+  expect(info.pending?.kind).toBe('credentials')
+  await h.runtime.respond(runId, { kind: 'credentials', username: 'demo', password: 'demo123' })
+  info = await h.runtime.settle(runId)
+  expect(info.pending?.kind).toBe('captcha')
+  const answer = h.sb.portal.captchaAnswer((await h.sb.driver.cookie(CAPTCHA_COOKIE))!)!
+  await h.runtime.respond(runId, { kind: 'captcha', answer })
+  return h.runtime.settle(runId)
+}
+
+describe('agent runtime', () => {
+  it('runs the portal task end to end: sign-in, download, approval, verification', async () => {
+    const h = await setup('happy_path', [
+      ...portalSignIn,
+      ...downloadAndRecord,
+      { tool: 'finish', args: { summary: 'Added ACM-1058.', claims: { records: [{ vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' }] } } },
+    ])
+    const runId = await h.runtime.start('Get the latest unpaid invoice from Acme Supplies on the vendor portal and add it to Finance.')
+    let info = await answerSignIn(h, runId)
+    expect(info.pending?.kind).toBe('approval')
+    expect(info.pending).toMatchObject({ tool: 'create_record' })
+
+    const run = (await h.store.load(runId))!
+    const pdfText = JSON.parse(run.messages.filter((m) => m.role === 'tool').at(-2)!.content as string).data.text as string
+    expect(pdfText).toContain('2026-10-28')
+
+    await h.runtime.respond(runId, { kind: 'approval', approved: true })
+    info = await h.runtime.settle(runId)
+    expect(info.status).toBe('completed')
+    expect(info.verification?.status).toBe('verified')
+
+    const records = await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ amount: 4812.5, dueDate: '2026-10-28' })
+
+    // Secrets never reach the model's context, the DB or events.
+    const stored = JSON.stringify(await h.store.load(runId)) + JSON.stringify(await h.events.list(runId))
+    expect(stored).not.toContain('demo123')
+    const types = (await h.events.list(runId)).map((e) => e.type)
+    expect(types).toEqual(expect.arrayContaining(['task_started', 'tool_called', 'approval_requested', 'input_requested', 'verification_passed', 'task_completed']))
+  }, 60_000)
+
+  it('re-signs in after the session expires mid-task', async () => {
+    const h = await setup('session_expired', [
+      ...portalSignIn,
+      (m) => {
+        const row = lastSnapshot(m).split('\n').find((l) => l.includes('ACM-1058'))!
+        return { tool: 'browser_click', args: { ref: /ref=(e\d+)/.exec(row)![1] } }
+      },
+      (m) => ({ tool: 'browser_download', args: { ref: refFor(lastSnapshot(m), /\[link "Download PDF"/) } }),
+      (m) => {
+        expect(lastObservation(m).error?.code).toBe('SESSION_EXPIRED')
+        return { tool: 'request_credentials', args: { site: 'Arcus Vendor Portal' } }
+      },
+      { tool: 'request_captcha' },
+      { tool: 'browser_read' },
+      (m) => ({ tool: 'browser_click', args: { ref: refFor(lastSnapshot(m), /\[button "Sign in"/) } }),
+      { tool: 'browser_open', args: { url: '/invoices/4' } },
+      (m) => ({ tool: 'browser_download', args: { ref: refFor(lastSnapshot(m), /\[link "Download PDF"/) } }),
+      (m) => ({ tool: 'finish', args: { summary: `Downloaded ${String(lastObservation(m).data!.path)}` } }),
+    ])
+    const runId = await h.runtime.start('Download ACM-1058 from the portal.')
+    let info = await answerSignIn(h, runId)
+    expect(info.pending?.kind).toBe('credentials')
+    info = await answerSignIn(h, runId)
+    expect(info.status).toBe('completed')
+  }, 60_000)
+
+  it('retries a transient Finance failure automatically and creates one record', async () => {
+    const h = await setup('transient_error', [
+      { tool: 'create_record', args: ACM },
+      { tool: 'finish', args: { summary: 'done', claims: { records: [{ vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' }] } } },
+    ])
+    const runId = await h.runtime.start('Add ACM-1058')
+    await h.runtime.settle(runId)
+    await h.runtime.respond(runId, { kind: 'approval', approved: true })
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('completed')
+    const events = await h.events.list(runId)
+    expect(events.filter((e) => e.type === 'tool_retry')).toHaveLength(1)
+    expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(1)
+  })
+
+  it('skips approval for a duplicate and reports it', async () => {
+    const h = await setup('duplicate', [
+      { tool: 'create_record', args: ACM },
+      (m) => {
+        expect(lastObservation(m).error?.code).toBe('DUPLICATE_RECORD')
+        return { tool: 'finish', args: { summary: 'Already recorded.' } }
+      },
+    ])
+    const runId = await h.runtime.start('Add ACM-1058')
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('completed')
+    expect(await searchRecords(h.sb.database.db, { invoiceNumber: 'ACM-1058' })).toHaveLength(1)
+  })
+
+  it('reports a rejected approval to the model', async () => {
+    const h = await setup('happy_path', [
+      { tool: 'create_record', args: ACM },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'PERMISSION_DENIED', message: expect.stringContaining('wrong vendor') })
+        return { tool: 'finish', args: { summary: 'Not added.', outcome: 'blocked' } }
+      },
+    ])
+    const runId = await h.runtime.start('Add ACM-1058')
+    await h.runtime.settle(runId)
+    await h.runtime.respond(runId, { kind: 'approval', approved: false, note: 'wrong vendor' })
+    expect((await h.runtime.settle(runId)).status).toBe('failed')
+  })
+
+  it('does not accept finish while verification shows a mismatch', async () => {
+    const finish = { tool: 'finish', args: { summary: 'Added it.', claims: { records: [{ vendor: 'Acme Supplies', invoiceNumber: 'ACM-1058' }] } } }
+    const h = await setup('verification_mismatch', [
+      { tool: 'create_record', args: ACM },
+      finish,
+      (m) => {
+        expect(lastObservation(m).error?.message).toContain('Not accepted')
+        return finish
+      },
+    ])
+    const runId = await h.runtime.start('Add ACM-1058')
+    await h.runtime.settle(runId)
+    await h.runtime.respond(runId, { kind: 'approval', approved: true })
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('failed')
+    expect(info.verification?.status).toBe('mismatch')
+    expect(info.error).toContain('$4,813.00')
+  })
+
+  it('aborts after three identical failing calls', async () => {
+    const bad = { tool: 'read_file', args: { path: 'Nope.md' } }
+    const h = await setup('happy_path', [bad, bad, bad, bad])
+    const runId = await h.runtime.start('Read Nope.md')
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('failed')
+    expect(info.error).toContain('3 times')
+    expect(h.provider.calls).toBe(3)
+  })
+
+  it('rejects invalid input with a VALIDATION observation', async () => {
+    const h = await setup('happy_path', [
+      { tool: 'create_record', args: { vendor: 'Acme Supplies' } },
+      (m) => {
+        expect(lastObservation(m).error?.code).toBe('VALIDATION')
+        return { tool: 'finish', args: { summary: 'stop', outcome: 'blocked' } }
+      },
+    ])
+    await h.runtime.settle(await h.runtime.start('x'))
+  })
+
+  it('resumes a paused run from persisted state in a fresh runtime', async () => {
+    const h = await setup('happy_path', [
+      { tool: 'ask_user', args: { question: 'Which vendor?', options: ['Acme Supplies', 'Acme Supply Co.'] } },
+      (m) => {
+        expect(lastObservation(m).data).toEqual({ answer: 'Acme Supplies' })
+        return { tool: 'finish', args: { summary: 'ok' } }
+      },
+    ])
+    const runId = await h.runtime.start('Ambiguous task')
+    expect((await h.runtime.settle(runId)).pending?.kind).toBe('question')
+
+    const restarted = h.make()
+    await restarted.respond(runId, { kind: 'answer', text: 'Acme Supplies' })
+    expect((await restarted.settle(runId)).status).toBe('completed')
+  })
+
+  it('enforces the step limit', async () => {
+    const h = await setup('happy_path', Array.from({ length: 40 }, (_, i) => ({ tool: 'remember', args: { fact: `fact ${i}` } })))
+    const info = await h.runtime.settle(await h.runtime.start('loop forever'))
+    expect(info.status).toBe('failed')
+    expect(info.error).toContain('30-step limit')
+  })
+})
