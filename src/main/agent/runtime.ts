@@ -341,7 +341,11 @@ export class AgentRuntime {
       return { ok: true, data: await fn() }
     } catch (err) {
       if (err instanceof ToolFailure) return fail(err.code, err.message)
-      throw err
+      // An unexpected error (a browser timeout, a bug) must never strand the run: report it to the
+      // model as a transient failure so it can retry or change course. Identical repeats still abort.
+      console.error('[runtime] unexpected tool error', err)
+      const message = err instanceof Error ? err.message.split('\n')[0]! : String(err)
+      return fail('TRANSIENT', `Unexpected error: ${message}`)
     }
   }
 

@@ -4,6 +4,8 @@ import type { BrowserDriver, Download, PageInfo } from './driver'
 import { SNAPSHOT_SCRIPT } from './snapshot'
 
 const NAV_TIMEOUT = 15_000
+/** Filling a form that is already on screen should be instant; anything longer means the page is not what we think. */
+const FORM_TIMEOUT = 5_000
 
 /** BrowserDriver over a Playwright page. `getPage` lets the app hand over its CDP-attached portal view. */
 export class PlaywrightDriver implements BrowserDriver {
@@ -144,9 +146,18 @@ export class PlaywrightDriver implements BrowserDriver {
   async fillLogin(username: string, password: string): Promise<void> {
     const page = await this.page()
     const form = page.locator('form:has(input[type=password])').first()
-    const user = form.locator('input[type=text], input[type=email], input:not([type])').filter({ hasNot: page.locator('[name*=captcha i]') })
-    await user.first().fill(username)
-    await form.locator('input[type=password]').first().fill(password)
+    if ((await form.count()) === 0) {
+      throw new ToolFailure(
+        'VALIDATION',
+        `The sign-in form is no longer on the page (now at ${page.url()}). Open the sign-in page again, then call request_credentials.`,
+      )
+    }
+    // The username field: the first text-like input that is not the captcha.
+    const user = form.locator(
+      'input:is([type=text], [type=email], :not([type])):not([name*=captcha i]):not([id*=captcha i]):not([type=hidden])',
+    )
+    await user.first().fill(username, { timeout: FORM_TIMEOUT })
+    await form.locator('input[type=password]').first().fill(password, { timeout: FORM_TIMEOUT })
   }
 
   async hasCaptcha(): Promise<boolean> {
@@ -162,7 +173,11 @@ export class PlaywrightDriver implements BrowserDriver {
 
   async fillCaptcha(answer: string): Promise<void> {
     const page = await this.page()
-    await page.locator('input[name*=captcha i], input[id*=captcha i]').first().fill(answer)
+    const field = page.locator('input[name*=captcha i], input[id*=captcha i]').first()
+    if ((await field.count()) === 0) {
+      throw new ToolFailure('VALIDATION', `The captcha is no longer on the page (now at ${page.url()}). Open the sign-in page again, then call request_captcha.`)
+    }
+    await field.fill(answer, { timeout: FORM_TIMEOUT })
   }
 
   async cookie(name: string): Promise<string | null> {

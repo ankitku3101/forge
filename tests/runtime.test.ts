@@ -410,6 +410,25 @@ describe('agent runtime', () => {
     expect(await h.events.list(runId)).toHaveLength(0)
   })
 
+  it('does not strand the run when the sign-in form is gone by the time the user answers', async () => {
+    // Found in manual testing: the fill timed out, the error escaped, and the run sat on "running" forever.
+    const h = await setup('happy_path', [
+      { tool: 'browser_open', args: { url: '/login' } },
+      { tool: 'request_credentials', args: { site: 'Arcus Vendor Portal' } },
+      (m) => {
+        expect(lastObservation(m).error).toMatchObject({ code: 'VALIDATION', message: expect.stringContaining('no longer on the page') })
+        return { tool: 'finish', args: { summary: 'Sign-in page went away.', outcome: 'blocked' } }
+      },
+    ])
+    const runId = await h.runtime.start('Sign in to the portal.')
+    expect((await h.runtime.settle(runId)).pending?.kind).toBe('credentials')
+    await h.sb.driver.open(`${h.sb.server.url}/no-such-page`) // the page changes while the user is typing
+    await h.runtime.respond(runId, { kind: 'credentials', username: 'demo', password: 'demo123' })
+    const info = await h.runtime.settle(runId)
+    expect(info.status).toBe('failed') // ended by the model's own "blocked" finish, not stuck
+    expect(h.provider.calls).toBe(3)
+  }, 60_000)
+
   it('enforces the step limit', async () => {
     const h = await setup('happy_path', Array.from({ length: 40 }, (_, i) => ({ tool: 'remember', args: { fact: `fact ${i}` } })))
     const info = await h.runtime.settle(await h.runtime.start('loop forever'))

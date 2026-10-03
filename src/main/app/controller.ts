@@ -147,7 +147,12 @@ export class AppController {
    * Never enabled in normal runs; the answer still goes through the same chat form as a user's.
    */
   private exposeE2EHooks(): void {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
     ;(globalThis as Record<string, unknown>).__arcusE2E = {
+      get browser() {
+        return self.browser
+      },
       captchaAnswer: async () => {
         const [cookie] = await this.portalView.view.webContents.session.cookies.get({ name: CAPTCHA_COOKIE })
         return cookie ? this.portal.captchaAnswer(cookie.value) : null

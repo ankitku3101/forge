@@ -7,6 +7,19 @@ import { registerIpc } from './app/ipc'
 
 loadEnv({ quiet: true })
 
+// One copy at a time: two copies would share the sandbox database (PGlite is single-process) and the
+// DevToolsActivePort file the browser driver attaches through. A second launch focuses the first.
+if (!app.requestSingleInstanceLock()) {
+  console.error('Autonomous AI Worker is already running; focusing that window instead.')
+  app.exit(0)
+}
+app.on('second-instance', () => {
+  const [win] = BrowserWindow.getAllWindows()
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+})
+
 // Lets Playwright attach to the embedded portal view over CDP (localhost only).
 // Port 0 makes Chromium pick a free port and write it to <userData>/DevToolsActivePort.
 app.commandLine.appendSwitch('remote-debugging-port', '0')

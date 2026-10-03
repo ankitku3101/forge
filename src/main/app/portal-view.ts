@@ -17,9 +17,10 @@ export class PortalView {
     private readonly win: BrowserWindow,
     private readonly portalUrl: string,
   ) {
-    this.view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true } })
-    this.view.setVisible(false)
+    // The worker drives this page even when it is off screen, so it must not be throttled when hidden.
+    this.view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false } })
     win.contentView.addChildView(this.view)
+    this.view.setVisible(false) // after attaching: adding a view makes it visible again
     void this.view.webContents.loadURL(`${portalUrl}/login`)
     // Keep navigation inside the portal.
     this.view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
